@@ -1,0 +1,159 @@
+<!-- pages/questions/questions.wxml — 待问清单（任务 19）。
+     无障碍：根节点内联 --mhp-scale 与 is-hc，消费任务 16 的全局缩放/高对比机制。 -->
+<view class="questions app-shell {{highContrast ? 'is-hc' : ''}} {{sidebarCollapsed ? 'is-collapsed' : ''}}" style="--mhp-scale: {{scale}}">
+  <app-sidebar current="questions" collapsed="{{sidebarCollapsed}}" scale="{{scale}}" bind:toggle="onSidebarToggle" />
+  <view class="hero">
+    <view class="hero__text">
+      <text class="hero__title">{{copy.title}}</text>
+      <text class="hero__sub">{{copy.intro}}</text>
+    </view>
+    <view class="hero__add" wx:if="{{!formOpen}}" bindtap="onAdd">{{buttons.add}}</view>
+  </view>
+
+  <view class="progress" wx:if="{{hasRecords}}">
+    <view class="progress__item">
+      <text class="progress__value">{{doneCount}}/{{total}}</text>
+      <text class="progress__label">{{copy.doneLabel}}</text>
+    </view>
+    <view class="progress__item">
+      <text class="progress__value">{{pendingCount}}</text>
+      <text class="progress__label">{{copy.pendingCountLabel}}</text>
+    </view>
+  </view>
+
+  <view class="stats" wx:if="{{hasGroups}}">
+    <text class="stats__title">{{copy.groupStatsTitle}}</text>
+    <view class="stats__list">
+      <view class="chip" wx:for="{{groupStats}}" wx:key="group">
+        <text class="chip__name">{{item.label}}</text>
+        <text class="chip__count">{{item.done}}/{{item.total}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="toolbar">
+    <picker
+      class="toolbar__filter"
+      mode="selector"
+      range="{{filterOptions}}"
+      value="{{filterIndex}}"
+      bindchange="onFilterChange"
+    >
+      <view class="picker">{{copy.filterLabel}}：{{filterLabel}}</view>
+    </picker>
+    <view class="toolbar__toggle" bindtap="onToggleImport">
+      {{importOpen ? copy.importToggleClose : copy.importToggleOpen}}
+    </view>
+  </view>
+
+  <view class="import" wx:if="{{importOpen}}">
+    <text class="import__title">{{copy.importTitle}}</text>
+    <text class="import__intro">{{copy.importIntro}}</text>
+    <view class="field">
+      <text class="field__label">{{copy.importTextLabel}}</text>
+      <textarea
+        class="field__area"
+        value="{{importText}}"
+        placeholder="{{copy.importTextPlaceholder}}"
+        bindinput="onImportTextInput"
+        maxlength="2000"
+      />
+    </view>
+    <view class="field">
+      <text class="field__label">{{copy.importGroupLabel}}</text>
+      <input
+        class="field__input"
+        value="{{importGroup}}"
+        placeholder="{{copy.groupPlaceholder}}"
+        bindinput="onImportGroupInput"
+        maxlength="30"
+      />
+      <view class="chips" wx:if="{{groupChips.length}}">
+        <text class="field__hint">{{copy.groupQuickHint}}</text>
+        <view class="chip chip--pick" wx:for="{{groupChips}}" wx:key="*this">
+          <view class="chip__pick" data-value="{{item}}" bindtap="onImportGroupChipPick">{{item}}</view>
+        </view>
+      </view>
+    </view>
+    <text class="import__hint" wx:if="{{importHint}}">{{importHint}}</text>
+    <view class="import__actions">
+      <view class="btn btn--primary" bindtap="onImportQuestions">{{copy.importAction}}</view>
+      <view class="btn btn--ghost" bindtap="onToggleImport">{{buttons.cancel}}</view>
+    </view>
+  </view>
+
+  <view class="editor" wx:if="{{formOpen}}">
+    <view class="editor__head">
+      <text class="editor__title">{{editingId ? copy.editTitle : copy.addTitle}}</text>
+      <view class="editor__close" bindtap="onCancelForm">{{buttons.cancel}}</view>
+    </view>
+
+    <view class="field">
+      <text class="field__label">{{copy.textLabel}}</text>
+      <textarea
+        class="field__area"
+        value="{{form.text}}"
+        placeholder="{{copy.textPlaceholder}}"
+        bindinput="onTextInput"
+        maxlength="200"
+      />
+    </view>
+
+    <view class="field">
+      <text class="field__label">{{copy.groupLabel}}</text>
+      <input
+        class="field__input"
+        value="{{form.group}}"
+        placeholder="{{copy.groupPlaceholder}}"
+        bindinput="onGroupInput"
+        maxlength="30"
+      />
+      <view class="chips" wx:if="{{groupChips.length}}">
+        <text class="field__hint">{{copy.groupQuickHint}}</text>
+        <view class="chip chip--pick" wx:for="{{groupChips}}" wx:key="*this">
+          <view class="chip__pick" data-value="{{item}}" bindtap="onGroupChipPick">{{item}}</view>
+        </view>
+      </view>
+    </view>
+
+    <text class="mhp-error" wx:if="{{errorText}}">{{errorText}}</text>
+
+    <view class="editor__actions">
+      <view class="btn btn--primary" bindtap="onSave">{{buttons.save}}</view>
+      <view class="btn btn--ghost" bindtap="onCancelForm">{{buttons.cancel}}</view>
+    </view>
+  </view>
+
+  <view class="list" wx:if="{{hasRecords}}">
+    <view class="q {{item.done ? 'is-done' : ''}}" wx:for="{{rows}}" wx:key="id">
+      <view class="q__main">
+        <view
+          class="q__check {{item.done ? 'is-done' : ''}}"
+          data-id="{{item.id}}"
+          bindtap="onToggleDone"
+        ></view>
+        <view class="q__body">
+          <text class="q__text">{{item.text}}</text>
+          <view class="q__meta">
+            <text class="q__group">{{item.groupLabel}}</text>
+            <text class="q__source">{{copy.sourcePrefix}}：{{item.sourceLabel}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="q__stamp">
+        <text class="q__stamp-item">{{copy.createdAtPrefix}} {{item.createdLabel}}</text>
+        <text class="q__stamp-item">{{copy.updatedAtPrefix}} {{item.updatedLabel}}</text>
+      </view>
+      <view class="q__actions">
+        <view class="btn btn--ghost" data-id="{{item.id}}" bindtap="onEdit">{{buttons.edit}}</view>
+        <view class="btn btn--danger" data-id="{{item.id}}" bindtap="onDelete">{{buttons.delete}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="mhp-empty" wx:else>
+    <view class="mhp-empty__badge"><view class="mhp-ico mhp-ico--message-circle-question"></view></view>
+    <text class="mhp-empty__text">{{emptyText}}</text>
+    <view class="btn btn--primary mhp-empty__action" bindtap="onAdd">{{buttons.add}}</view>
+  </view>
+</view>

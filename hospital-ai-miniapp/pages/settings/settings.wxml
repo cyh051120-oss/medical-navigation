@@ -1,0 +1,165 @@
+<!-- pages/settings/settings.wxml — 设置（任务 15）。
+     字号缩放：根节点内联 --mhp-scale 即时生效；高对比：is-hc 类启用 app.wxss 变量。 -->
+<view class="settings app-shell {{highContrast ? 'is-hc' : ''}} {{sidebarCollapsed ? 'is-collapsed' : ''}}" style="--mhp-scale: {{scale}}">
+  <app-sidebar current="settings" collapsed="{{sidebarCollapsed}}" scale="{{scale}}" bind:toggle="onSidebarToggle" />
+  <view class="settings-hero">
+    <text class="settings-hero__title">设置</text>
+    <text class="settings-hero__sub">显示、隐私、数据与 AI 记忆都在这里管理；资料只保存在本机。</text>
+  </view>
+
+  <view class="card">
+    <text class="card__title">显示与无障碍</text>
+
+    <view class="row row--block">
+      <view class="row__head">
+        <text class="row__label">字号</text>
+        <text class="row__value">{{fontSize}}</text>
+      </view>
+      <slider
+        class="slider"
+        min="{{fontMin}}"
+        max="{{fontMax}}"
+        step="1"
+        value="{{fontSize}}"
+        show-value
+        activeColor="{{accentColor}}"
+        bindchanging="onFontSizeChanging"
+        bindchange="onFontSizeChange"
+      />
+      <text class="row__hint">范围 {{fontMin}}–{{fontMax}}，调整后立即生效。</text>
+    </view>
+
+    <view class="row">
+      <view class="row__main">
+        <text class="row__label">高对比模式</text>
+        <text class="row__hint">开启后使用高对比配色，文字更清晰。</text>
+      </view>
+      <switch checked="{{highContrast}}" bindchange="onHighContrastChange" />
+    </view>
+
+    <view class="row">
+      <view class="row__main">
+        <text class="row__label">语音输入</text>
+        <text class="row__hint">{{a11y.keyboardMic}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="card">
+    <text class="card__title">AI 外部调用</text>
+    <view class="row">
+      <view class="row__main">
+        <text class="row__label">允许外部 AI 调用</text>
+        <text class="row__hint">{{privacy.externalAiOffByDefault}}</text>
+      </view>
+      <switch checked="{{aiEnabled}}" bindchange="onAiEnabledChange" />
+    </view>
+    <view class="scope">
+      <text class="scope__title">发送范围（开启前需同意）</text>
+      <text class="scope__text">{{privacy.externalAiSendScope}}</text>
+    </view>
+    <text class="row__hint row__hint--status">{{consentText}}</text>
+    <view class="row" wx:if="{{demoVisible}}">
+      <view class="row__main">
+        <text class="row__label">{{demo.toggleLabel}}</text>
+        <text class="row__hint">{{demo.toggleHint}}</text>
+      </view>
+      <switch checked="{{demoMode}}" bindchange="onDemoModeChange" />
+    </view>
+  </view>
+
+  <view class="card">
+    <text class="card__title">{{memory.title}}</text>
+    <text class="card__intro">{{memory.intro}}</text>
+
+    <view class="row">
+      <view class="row__main">
+        <text class="row__label">{{memory.autoLabel}}</text>
+        <text class="row__hint">{{memory.autoHint}}</text>
+      </view>
+      <switch checked="{{autoMemory}}" bindchange="onAutoMemoryChange" />
+    </view>
+
+    <view class="mhp-empty mhp-empty--inline" wx:if="{{!hasMemories}}">
+      <text class="mhp-empty__text">{{memory.empty}}</text>
+    </view>
+
+    <view class="mem-list" wx:else>
+      <view class="mem-item" wx:for="{{memories}}" wx:key="id">
+        <view class="mem-item__main" data-id="{{item.id}}" bindtap="onMemoryEdit">
+          <view class="mem-item__head">
+            <text class="mem-badge mem-badge--{{item.source}}">{{item.sourceLabel}}</text>
+            <text class="mem-item__text">{{item.text}}</text>
+          </view>
+        </view>
+        <view class="mem-item__actions">
+          <switch checked="{{item.enabled}}" data-id="{{item.id}}" bindchange="onMemoryToggle" />
+          <view class="btn btn--ghost" data-id="{{item.id}}" bindtap="onMemoryDelete">{{buttons.delete}}</view>
+        </view>
+      </view>
+    </view>
+
+    <view class="mem-form">
+      <text class="mem-form__hint" wx:if="{{editingId}}">{{memory.editingHint}}</text>
+      <input
+        class="mem-form__input"
+        placeholder="{{memory.addPlaceholder}}"
+        value="{{memoryDraft}}"
+        bindinput="onMemoryDraftInput"
+        maxlength="60"
+      />
+      <view class="mem-form__actions">
+        <view class="btn btn--primary" bindtap="onMemorySave">{{buttons.save}}</view>
+        <view class="btn btn--ghost" wx:if="{{editingId}}" bindtap="onMemoryCancelEdit">{{buttons.cancel}}</view>
+      </view>
+      <text class="mhp-error" wx:if="{{memoryError}}">{{memoryError}}</text>
+    </view>
+
+    <view class="btn btn--danger" wx:if="{{hasMemories}}" bindtap="onMemoryClearAll">{{memory.clearAllButton}}</view>
+  </view>
+
+  <view class="card">
+    <text class="card__title">数据</text>
+
+    <view class="row row--block">
+      <text class="row__label">{{exportCopy.button}}</text>
+      <text class="row__hint">{{exportCopy.notice}}</text>
+      <view class="btn btn--primary" bindtap="onExport">{{exportCopy.button}}</view>
+      <text class="result" wx:if="{{exportPath}}">已导出到：{{exportPath}}</text>
+      <text class="result mhp-error" wx:if="{{exportError}}">{{exportError}}</text>
+    </view>
+
+    <view class="divider"></view>
+
+    <view class="row row--block">
+      <text class="row__label">{{wipeCopy.button}}</text>
+      <text class="row__hint">{{wipeCopy.firstContent}}</text>
+      <view class="btn btn--danger" bindtap="onWipe">{{wipeCopy.button}}</view>
+      <text class="result mhp-error" wx:if="{{wipeError}}">{{wipeCopy.failedHint}}：{{wipeError}}</text>
+      <view class="btn btn--ghost" wx:if="{{wipeError}}" bindtap="onWipe">{{wipeCopy.retryButton}}</view>
+    </view>
+
+    <text class="result" wx:if="{{resultText}}">{{resultText}}</text>
+  </view>
+
+  <view class="card">
+    <text class="card__title">隐私说明</text>
+    <text class="para">{{privacy.localFirst}}</text>
+    <text class="para">{{privacy.externalAiOffByDefault}}</text>
+    <text class="para">{{privacy.externalAiConsent}}</text>
+    <text class="para">{{privacy.localDataControl}}</text>
+  </view>
+
+  <view class="card">
+    <text class="card__title">非医疗器械声明</text>
+    <text class="para">{{about.nonDevice}}</text>
+    <text class="para">{{disclaimers.notDiagnosis}}</text>
+    <text class="para">{{disclaimers.notProfessional}}</text>
+  </view>
+
+  <view class="card">
+    <text class="card__title">关于</text>
+    <text class="para">{{about.aboutText}}</text>
+    <text class="para">{{about.version}}</text>
+  </view>
+</view>
