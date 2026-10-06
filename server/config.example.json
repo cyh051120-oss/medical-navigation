@@ -1,0 +1,22 @@
+{
+  "port": 8787,
+  "demo": false,
+  "llm": {
+    "baseUrl": "https://api.example.com/v1",
+    "apiKey": "",
+    "model": "replace-me"
+  },
+  "search": {
+    "baseUrl": "https://search.example.com",
+    "apiKey": ""
+  },
+  "authorityDomains": [
+    "nhc.gov.cn",
+    "chinacdc.cn",
+    "nmpa.gov.cn",
+    "cma.org.cn",
+    "pumch.cn",
+    "wchscu.cn",
+    "msdmanuals.cn"
+  ]
+}

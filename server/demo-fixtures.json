@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "description": "确定性演示 fixtures（任务 26）。demo=true 时 POST /api/ask 直接返回本文件内容，全程零网络。consult.response 的 citation 必须能由 consult.sources + 权威域名校验通过；redflag 的两个固定句必须与 server/redflags.ts 的 SAFETY_NOTICE、server/prompts.ts 的 CONSULT_DISCLAIMER 逐字一致（scripts/check-demo.mjs 会断言）。本文件只含合成的演示数据，无任何真实患者信息、无时间戳。",
+  "redflag": {
+    "redFlag": true,
+    "safetyNotice": "您描述的情况可能需要尽快就医。本助手不提供任何医疗判断或建议，请立即联系医生或前往就近医疗机构。",
+    "disclaimer": "以上内容仅为信息整理与一般性提示，不构成诊断或治疗建议；如有不适请及时就医。"
+  },
+  "organize": {
+    "points": [
+      "近一周出现头痛",
+      "入睡较晚、睡眠欠佳"
+    ],
+    "extracted": {
+      "symptoms": [
+        "头痛"
+      ],
+      "medications": [],
+      "allergies": [],
+      "history": [],
+      "exams": []
+    },
+    "unknowns": [
+      "头痛诱因与持续时间未说明"
+    ],
+    "questions": [
+      "头痛从何时开始、多久一次？"
+    ]
+  },
+  "organizeMinimal": {
+    "points": [],
+    "extracted": {
+      "symptoms": [],
+      "medications": [],
+      "allergies": [],
+      "history": [],
+      "exams": []
+    },
+    "unknowns": [],
+    "questions": []
+  },
+  "consult": {
+    "sources": [
+      {
+        "title": "国家卫生健康委员会：就医准备与信息整理提示",
+        "url": "https://nhc.gov.cn/health/demo-1",
+        "snippet": "演示用固定来源摘要（非真实页面）。",
+        "domain": "nhc.gov.cn"
+      },
+      {
+        "title": "中国疾病预防控制中心：日常健康生活方式提示",
+        "url": "https://www.chinacdc.cn/health/demo-2",
+        "snippet": "演示用固定来源摘要（非真实页面）。",
+        "domain": "www.chinacdc.cn"
+      }
+    ],
+    "response": {
+      "directions": [
+        {
+          "text": "注意休息与规律作息",
+          "citation": {
+            "title": "国家卫生健康委员会：就医准备与信息整理提示",
+            "url": "https://nhc.gov.cn/health/demo-1",
+            "domain": "nhc.gov.cn"
+          }
+        },
+        {
+          "text": "保持清淡均衡饮食",
+          "citation": {
+            "title": "中国疾病预防控制中心：日常健康生活方式提示",
+            "url": "https://www.chinacdc.cn/health/demo-2",
+            "domain": "www.chinacdc.cn"
+          }
+        }
+      ],
+      "suggestedDepartments": [
+        "全科"
+      ],
+      "citations": [
+        {
+          "title": "国家卫生健康委员会：就医准备与信息整理提示",
+          "url": "https://nhc.gov.cn/health/demo-1",
+          "domain": "nhc.gov.cn"
+        },
+        {
+          "title": "中国疾病预防控制中心：日常健康生活方式提示",
+          "url": "https://www.chinacdc.cn/health/demo-2",
+          "domain": "www.chinacdc.cn"
+        }
+      ],
+      "suggestions": [
+        {
+          "text": "作息规律、避免熬夜",
+          "citation": {
+            "title": "国家卫生健康委员会：就医准备与信息整理提示",
+            "url": "https://nhc.gov.cn/health/demo-1",
+            "domain": "nhc.gov.cn"
+          }
+        }
+      ],
+      "unknowns": [
+        "症状出现时间与频率"
+      ],
+      "questions": [
+        "需要向医生了解哪些检查或注意事项？"
+      ],
+      "disclaimer": "以上内容仅为信息整理与一般性提示，不构成诊断或治疗建议；如有不适请及时就医。"
+    }
+  },
+  "extractMemory": {
+    "candidates": [
+      {
+        "text": "偏好晚上十点前入睡"
+      },
+      {
+        "text": "饮食清淡、少油少盐"
+      },
+      {
+        "text": "喜欢散步等轻度活动"
+      }
+    ]
+  },
+  "interview": {
+    "question": {
+      "text": "这个情况大概持续多久了？",
+      "slot": "duration"
+    }
+  }
+}
