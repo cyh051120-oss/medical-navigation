@@ -15,8 +15,9 @@
 ## 2. 字号缩放与高对比机制
 
 - **单一机制**：`hospital-ai-miniapp/shared/ui/a11y.ts` 从 `records.preferences` 读取
-  `fontSize` / `highContrast`，由每个页面在 `onShow()` 调用 `syncA11y(this)` 写入本页
-  `data`。
+  `fontSize` / `highContrast`。7 个页面（home/profile/symptoms/notes/questions/brief/ai）
+  在 `onShow()` 调用 `syncA11y(this)` 写入本页 `data`；设置页（settings）需即时预览滑条，
+  自行内联计算 `scale = fontSize / 14`，不调用该 helper（`pages/settings/settings.ts`）。
 - **页面消费**：8 个页面（home/profile/symptoms/notes/questions/brief/ai/settings）的根节点
   统一写 `style="--mhp-scale: {{scale}}"`（`scale = fontSize / 14`，14 → 1、32 → 32/14），
   高对比再叠加 `is-hc` 类。
@@ -62,8 +63,8 @@
   a11y-14.png`、`a11y-32.png`）的 md5 不同作为「可见差异」的客观代理；DevTools 自动化
   不提供逐元素文字溢出测量，故「无溢出」以**缩放面静态扫描（零裸 px）+ 运行时页面可渲染
   无异常**组合作为代理证据（见 `artifacts/qa/16-failure.txt`），不做像素级溢出断言。
-- **历史遗留页**：仓库内存在未在 `app.json` 注册的旧页面（chat/dashboard/doctors/elderly/
-  login），它们含写死的 px 字号；它们**不在本次 8 个正式页面范围**，未纳入缩放面，后续如
-  启用需单独迁移。
+- **历史遗留页（已退位）**：早期版本曾存在未在 `app.json` 注册的旧页面（chat/dashboard/
+  doctors/elderly/login），它们含写死的 px 字号。这些页面**已从当前仓库删除**，`pages/` 下
+  现只有已注册的 8 个正式页面，故不存在需要单独迁移的遗留对象。
 - **原生控件**：`slider` / `switch` 等原生控件不读取 CSS 变量，其强调色在 settings 页通过
   内联 `activeColor` 镜像（既有实现），不随 `--mhp-scale` 缩放。

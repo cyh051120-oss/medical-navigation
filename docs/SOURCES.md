@@ -64,10 +64,10 @@
    （`server/validate.ts: resolveCitation / validateConsultOutput`）要求每条方向与建议的引用
    去空白后与本次已获取的某个来源 URL 完全相等，且域名通过白名单；否则整个输出判为不合格。
 3. **界面表现。** 小程序端在存在方向和来源条目时渲染对应小节
-   （`hospital-ai-miniapp/pages/ai/ai.ts: consultBlocks / citationParts`；来源前缀
+   （`hospital-ai-miniapp/shared/services/aiRender.ts: consultBlocks / citationParts`；来源前缀
    `config/texts.ts: AI.citationPrefix`）。当本次没有任何命中白名单的来源（`citations` 为空）时，
    界面在来源位置渲染一条 `notice` 提示，文案为「未找到权威资料，请向医生确认」
-   （`config/texts.ts: AI.noAuthorityNotice`，经 `pages/ai/ai.ts: consultBlocks` 渲染）。
+   （`config/texts.ts: AI.noAuthorityNotice`，经 `shared/services/aiRender.ts: consultBlocks` 渲染）。
    该提示是提示而非来源条目：界面不展示任何来源行，也不用普通网页凑数。该用户可见表述同时
    记录在 `hospital-ai-miniapp/README.md`（权威来源一节）。
 4. **不合格输出降级。** 若模型仍给出无法核验的引用，编排器返回
@@ -77,7 +77,7 @@
 ## 六、来源展示格式
 
 问诊建议结果中，每条健康方向与日常建议若带引用，界面显示
-`来源：<标题> · <域名>` 并附 URL（`hospital-ai-miniapp/pages/ai/ai.ts: citationParts`）。
+`来源：<标题> · <域名>` 并附 URL（`hospital-ai-miniapp/shared/services/aiRender.ts: citationParts`）。
 `citations` 小节由解析成功的引用去重生成，`title/url/domain` 一律取自已获取来源，
 不信任模型自带字段（`server/validate.ts: validateConsultOutput`）。
 

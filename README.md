@@ -25,7 +25,9 @@ cp server/config.example.json server/config.json
 
 然后编辑 `server/config.json`，填入你自己的 LLM 与检索服务配置（`llm` / `search`），
 以及可选的权威来源域名白名单（`authorityDomains`）。`config.json` 已被 `.gitignore` 忽略，
-只有示例文件 `config.example.json` 入库；仓库里不含任何密钥。两项 `apiKey` 都可以留空，
+只有示例文件 `config.example.json` 入库；仓库里**不含任何完整的明文密钥**。但请注意：本仓库
+曾被推送到**公开的 GitHub 远端**，且历史文档中曾写入可定位账号的凭证标识（完整的接入点 ID
+与若干密钥前缀）。这些凭证必须吊销，详见 `docs/SECURITY-REVOKE.md`。两项 `apiKey` 都可以留空，
 留空时代理照常启动，`/api/health` 会报告 `providerReady=false` / `searchReady=false`。
 
 ### 2. 启动本地代理
@@ -54,17 +56,19 @@ npm run test:scan     # 静态扫描：能力禁令、密钥、权限、语法
 npm run test:logic    # 本地整理与摘要逻辑检查
 npm run test:server   # 代理端逻辑检查（配置、LLM、检索、编排与演示矩阵）
 npm run test:e2e      # 端到端（需要微信开发者工具）
-npm run screenshots   # 生成演示截图集（需要微信开发者工具）
+npm run screenshots   # 常规截图 + 大字长文本 OCR 溢出探针（需要微信开发者工具）
+npm run screenshots:soft  # 软著登记用确定性截图集（需要微信开发者工具）
 ```
 
 ## 软著演示
 
 申请软件著作权需要可复现的演示材料。小程序在开发环境下提供「演示模式」：开启后 AI 输出
-为本地固定内容，同一输入永远得到同一份结果，且全程不发任何网络请求。配合它运行：
+为本地固定内容，同一输入永远得到同一份结果，且全程不发任何网络请求。
 
-```bash
-npm run screenshots
-```
+- `npm run screenshots`：常规截图集（8 个页面、大字对比等），并对大字长文本做 OCR 溢出探针
+  （探针需 `MHP_OCR_SHOT` 指向 OCR helper；未提供时该探针如实失败退出，不伪造通过）。
+- `npm run screenshots:soft`：软著登记用的确定性截图集（18 张，同一输入两次冷启动逐张字节一致），
+  等价于 `node tests/e2e/screenshots-soft.mjs`。
 
-会走演示模式生成一整套截图（8 个页面、大字对比等），内容确定、可重复，便于整理成演示
-与登记材料。
+两条命令都需要微信开发者工具。登记材料取确定性那一套，内容确定、可重复。截图与索引是
+本机运行产物，不入库。

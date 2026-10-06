@@ -107,31 +107,36 @@ home → profile → symptoms → notes → questions → brief → ai → setti
 - 「保存」写入 `records.briefs`（content / sourceIds / exportedAt），页面显示「导出时间」
   （`pages/brief/brief.ts: onGenerate / onSave`）。
 
-## 步骤 7：AI 助手（ai）——双模式与来源展示
+## 步骤 7：AI 助手（ai）——三种模式与来源展示
 
-**操作**：从工作台进入「资料整理」（`pages/ai/ai?mode=organize`）或「问诊建议」
-（`pages/ai/ai?mode=consult`）；输入一段口语化原话；问诊建议模式可打开「带入我的资料」，
-勾选要带入的记录；点「发送」，在弹出的「发送前确认」面板查看将发送的范围后点「确认发送」。
+**操作**：从左侧导航栏进入「AI 助手」，选择「资料整理」（`pages/ai/ai?mode=organize`）、
+「问诊建议」（`pages/ai/ai?mode=consult`）或「问诊引导」；输入一段口语化原话；
+问诊建议模式可打开「带入我的资料」，勾选要带入的记录；点「发送」，在弹出的「发送前确认」
+面板查看将发送的范围后点「确认发送」。
 
 **预期结果**：
 
-- **AI 双模式**：
+- **AI 三种模式**：
   - 资料整理（组织）模式输出「要点 / 提取 / 待补充 / 可以问的问题」
     （`pages/ai/ai.ts: organizeBlocks`）。
   - 问诊建议（咨询）模式输出「健康方向 / 建议就诊科室 / 来源链接 / 日常建议 / 待补充 /
-    可以问的问题」（`pages/ai/ai.ts: consultBlocks`）。
-  - 模式切换见 `pages/ai/ai.ts: setMode`；首次进入问诊建议模式需先同意发送范围
-    （`pages/ai/ai.ts: requestConsultConsent`）。
+    可以问的问题」（`shared/services/aiRender.ts: consultBlocks`）。
+  - 问诊引导模式：AI **一次只问一个问题**，逐轮补齐信息；追问**不给方向 / 科室 / 来源**，
+    只收集事实；答完（或点「结束追问」）后弹出「保存为症状记录」草稿，确认后写入症状记录
+    （`pages/ai/ai.ts: buildInterviewPreview / handleInterviewResult / onEndInterview / onInterviewDraftConfirm`；
+    服务端 `server/interview.ts: interview`）。
+  - 模式切换见 `pages/ai/ai.ts: setMode`；首次进入问诊建议或问诊引导模式需先同意
+    （`pages/ai/ai.ts: requestConsultConsent / requestInterviewConsent`）。
 - **发送前预览**：面板按段展示将发送的「档案摘要 / 记录摘录 / 记忆 / 对话」，确认后才发送，
   预览内容即将要发送的字节（`pages/ai/ai.ts: buildPreview`；发送边界
   `shared/services/aiClient.ts: buildAskPayload / reassembleAskPayload / sendAsk`）。
 - **来源展示**：问诊建议的每条健康方向与日常建议都带 `来源：<标题> · <域名>` 并附链接
-  （`pages/ai/ai.ts: citationParts`；前缀文案 `config/texts.ts: AI.citationPrefix`）。来源经过
+  （`shared/services/aiRender.ts: citationParts`；前缀文案 `config/texts.ts: AI.citationPrefix`）。来源经过
   服务端权威域名白名单筛选（`server/authorities.ts: isAuthorityUrl`；
   `server/providers/search.ts: search`）。若本次没有命中白名单的来源，服务端规则要求不产生
   任何方向/建议引用（`server/prompts.ts: sourcesBlock`）。若本次没有命中白名单的来源，
   界面在来源位置展示提示「未找到权威资料，请向医生确认」
-  （`pages/ai/ai.ts: consultBlocks`；提示文案 `config/texts.ts: AI.noAuthorityNotice`）。
+  （`shared/services/aiRender.ts: consultBlocks`；提示文案 `config/texts.ts: AI.noAuthorityNotice`）。
 - **降级**：本机代理未启动或出错时，界面显示降级状态条，下一次发送自动改用本地整理（无网络），
   绝不编造 AI 内容（`pages/ai/ai.ts: handleSendResult / autoLocalSend / onLocalOrganize`；
   本地整理引擎 `shared/services/organizer.ts: organize`）。
@@ -150,12 +155,12 @@ home → profile → symptoms → notes → questions → brief → ai → setti
   `shared/ui/a11y.ts: syncA11y`，8 个页面根节点统一绑定 `--mhp-scale`）。
 - **高对比度**：打开「高对比模式」开关，页面切换为高对比配色
   （`pages/settings/settings.ts: onHighContrastChange`；变量映射见 `app.wxss` 的 `.is-hc`，
-  由 `shared/ui/a11y.ts: readA11y` 读取偏好后写入）。
+  由 `shared/ui/a11y.ts: readA11y`（模块内部读取函数）读取偏好后写入）。
 - **外部 AI 调用**：默认关闭；开启前需先阅读发送范围并同意
   （`pages/settings/settings.ts: onAiEnabledChange`）。
-- **导出与清除**：「导出全部」把文字记录与附件名称/路径引用写入本机文件
+- **导出与清除**：「导出全部」把文字记录与附件名称/路径引用写入固定的 `exports/mhp_export.json`
   （`pages/settings/settings.ts: onExport`）；「清除所有本地资料」经两步确认后清除记录、
-  旧命名空间与附件（`pages/settings/settings.ts: performWipe`）。
+  旧命名空间、附件与本机导出文件（`pages/settings/settings.ts: performWipe`）。
 - **演示模式**：仅开发者工具可见的「演示模式」开关；打开后 AI 输出为本地固定内容、全程无外部请求，
   **单开关即生效**（无需再开「允许外部 AI 调用」）
   （`pages/settings/settings.ts: onDemoModeChange / isDevelopEnv`）。

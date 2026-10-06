@@ -63,14 +63,15 @@
 | F-06 | 就医摘要 | 选择记录后生成可编辑摘要；症状原话逐字保留 | `hospital-ai-miniapp/shared/services/brief.ts: build` |
 | F-07 | 摘要图片导出 | 经 2D canvas 生成 750×1334 图片，可保存到相册或分享 | `hospital-ai-miniapp/pages/brief/brief.ts: onExportImage` |
 | F-08 | AI 资料整理模式 | 把一段口语化原话整理成要点、提取线索、待补充项与可问问题 | `hospital-ai-miniapp/pages/ai/ai.ts: organizeBlocks` |
-| F-09 | AI 问诊建议模式 | 结合带入资料给出健康方向、建议就诊科室、来源链接、日常建议与可问问题 | `hospital-ai-miniapp/pages/ai/ai.ts: consultBlocks` |
+| F-09 | AI 问诊建议模式 | 结合带入资料给出健康方向、建议就诊科室、来源链接、日常建议与可问问题 | `hospital-ai-miniapp/shared/services/aiRender.ts: consultBlocks` |
 | F-10 | 发送前预览确认 | 按段展示将发送的内容；确认后才发送，预览即即将发送的字节 | `hospital-ai-miniapp/shared/services/aiClient.ts: buildAskPayload / sendAsk` |
 | F-11 | 权威来源白名单过滤 | 只有命中白名单域名的检索结果才作为来源展示（严格子域匹配） | `server/authorities.ts: isAuthorityUrl`；`server/providers/search.ts: search` |
 | F-12 | AI 偏好记忆 | 手动或自动提炼偏好条目，可启停、编辑、删除、清空 | `hospital-ai-miniapp/shared/services/records.ts: memory`；`server/extract-memory.ts` |
 | F-13 | 结果回流 | AI 结果可「存为资料」或「加入待问清单」 | `hospital-ai-miniapp/pages/ai/ai.ts: onSaveAsNote / onAddToQuestions` |
-| F-14 | 数据导出与清除 | 一键导出全部文字记录；两步确认后清除全部本地资料与附件 | `hospital-ai-miniapp/pages/settings/settings.ts: onExport / performWipe` |
+| F-14 | 数据导出与清除 | 一键导出全部文字记录到固定的 `exports/mhp_export.json`；两步确认后清除全部本地资料、附件与本机导出文件 | `hospital-ai-miniapp/pages/settings/settings.ts: onExport / performWipe` |
 | F-15 | 无障碍 | 全局字号 14–32 连续可调；高对比模式 | `hospital-ai-miniapp/shared/ui/a11y.ts: syncA11y` |
 | F-16 | 演示模式 | 开发环境下 AI 输出为本地固定内容，全程无外部请求 | `hospital-ai-miniapp/shared/services/demoAi.ts`；`server/demo-fixtures.json` |
+| F-17 | AI 问诊引导模式 | 先说一段情况，AI **一次只问一个问题**帮用户补齐信息；追问**不给方向/科室/来源**，只收集事实；答完（或点「结束追问」）后可把问答存为症状记录，或加入待问清单/资料摘录 | `hospital-ai-miniapp/pages/ai/ai.ts: setMode / buildInterviewPreview / handleInterviewResult / onEndInterview / onInterviewDraftConfirm`；`hospital-ai-miniapp/shared/services/aiClient.ts: buildInterviewPayload / sendInterview`；`server/interview.ts: interview` |
 
 完整逐条清单（含工程检查能力）见 `docs/FEATURE-LIST.md`。
 
@@ -84,7 +85,7 @@
 | 出口唯一 | 只允许访问本机回环地址，其它地址结构化拒绝 | `shared/services/aiClient.ts: ALLOWED_PROXY_HOSTS / assertProxyUrl` |
 | 安全护栏 | 红标短路、禁词校验、受控科室、引用必须匹配已抓取来源 | `server/redflags.ts`、`server/validate.ts`、`server/prompts.ts` |
 | 不编造 | 上游不可用或校验不过时降级本地整理，并如实告知原因 | `pages/ai/ai.ts: handleSendResult / autoLocalSend` |
-| 确定性 | 同一输入同一结果，供演示与登记材料复现 | 演示模式 + 固定 fixtures；`artifacts/screenshots/index.json: determinism` |
+| 确定性 | 同一输入同一结果，供演示与登记材料复现 | 演示模式 + 固定 fixtures；`artifacts/screenshots/index.json: determinism`（本机运行产物，不入库） |
 | 零运行时依赖 | 代理只用 Node 内置模块，无需构建 | `server/tsconfig.json`（可擦除语法约束）；`package.json` 无 `dependencies` |
 | 无障碍 | 字号 14–32 逐页生效；高对比配色 | `shared/ui/a11y.ts`；`app.wxss` 的 `.is-hc` |
 
@@ -107,13 +108,14 @@
                                │  HTTP 127.0.0.1:8787（仅回环）
 ┌──────────────────────────────▼─────────────── 用户电脑 ─────────┐
 │  本地 AI 代理 server/                                            │
-│  index.ts（HTTP 装配）► orchestrator.ask()                       │
+│  index.ts（HTTP 装配）► orchestrator.ask() / interview()         │
 │    1) 请求校验（consent / mode / messages）                      │
 │    2) redflags 红标扫描 ──命中──► 固定安全提示（零上游调用）      │
 │    3) providers/search（问诊至多 1 次）► authorities 白名单过滤   │
 │    4) prompts 构建 system 提示 ► providers/llm（OpenAI 兼容）     │
 │    5) validate 输出校验（白名单重建 / 禁词 / 受控科室 / 引用核验） │
 │       └─ 失败 ──► { error: 'unsafe_output', fallback: 'organize' }│
+│  POST /api/interview ► interview()（问诊引导：逐轮单步，不检索）  │
 │  config.json（用户自填模型与检索；不入库）                        │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -144,17 +146,18 @@
 | 演示 | `shared/services/demoAi.ts` | 演示模式的本地固定输出 |
 | 无障碍 | `shared/ui/a11y.ts` | 字号缩放与高对比偏好读取与下发 |
 | HTTP 装配 | `server/index.ts` | 路由、CORS、请求体上限、健康检查 |
-| 编排 | `server/orchestrator.ts` | `ask()`：双模式编排 + 护栏 + 校验，绝不抛异常 |
-| 提示词 | `server/prompts.ts` | 双模式 system 提示、受控科室、上限常量 |
+| 编排 | `server/orchestrator.ts` | `ask()`：资料整理 / 问诊建议两种模式编排 + 护栏 + 校验，绝不抛异常（问诊引导走独立路由 `interview()`） |
+| 提示词 | `server/prompts.ts` | 三种模式 system 提示、受控科室、上限常量 |
 | 输出校验 | `server/validate.ts` | 白名单重建、禁词、长度、引用核验、受控科室 |
 | 红标 | `server/redflags.ts` | 确定性危重信号扫描 + 固定安全句 |
 | 权威域名 | `server/authorities.ts` | 白名单解析与严格子域匹配 |
 | 上游适配 | `server/providers/llm.ts`、`server/providers/search.ts` | OpenAI 兼容 LLM；检索 + 权威过滤 |
 | 记忆提炼 | `server/extract-memory.ts` | 仅提炼偏好/习惯，禁医疗内容，逐条校验 |
+| 问诊引导 | `server/interview.ts` | 连续追问的单步接口 `interview()`；一次一个问题、只收集事实、不给方向/科室/来源 |
 
 ### 3.4 一次 AI 问诊的完整数据流
 
-1. 用户在 AI 页输入原话，选择模式（资料整理 / 问诊建议）；
+1. 用户在 AI 页输入原话，选择模式（资料整理 / 问诊建议 / 问诊引导）；
 2. 客户端按勾选范围组装载荷：脱敏后的档案摘要、记录摘录、启用中的记忆、当前对话；
 3. **发送前确认**面板按段展示"即将发送的字节"，用户确认后发送；
 4. 代理侧：请求校验 → 红标扫描（命中即返回固定安全提示，零上游调用）；
@@ -162,6 +165,10 @@
 6. 构建 system 提示调用 LLM（非流式、严格 JSON）；
 7. 输出校验：只有已知字段进入结果；禁词、长度、受控科室、引用与已抓取来源逐项核验；
 8. 校验通过则返回结构化结果；失败则返回 `unsafe_output` 并指示客户端降级为**本地整理**。
+
+**问诊引导（第三模式）**：走 `POST /api/interview`。每轮把已有问答发往代理，代理返回**下一个问题**
+（一次一个，不检索、不给方向/科室/来源）；用户可随时点「结束追问」，随后弹出「保存为症状记录」
+草稿，确认后写入症状记录；追问过程中的问答也可「加入待问清单」「摘成资料」（均只写本机）。
 
 ---
 
@@ -222,24 +229,27 @@
 
 ## 5 开发计划与里程碑
 
-开发采用"基线 + 迭代 + 终验"的方式推进，全部工作均落在单一本地分支，从未推送到任何远端。
+开发采用"基线 + 迭代 + 终验"的方式推进，主要工作在本地 `main` 分支完成，另有一个本地
+`backup-v1.0-before-split` 备份分支。仓库**曾被推送到一个公开的 GitHub 远端**（`origin`），
+该远端包含全部提交；因此历史凭证必须按 `docs/SECURITY-REVOKE.md` 吊销（见该文件「背景」）。
 
 | 阶段 | 内容 | 主要交付物 | 状态 |
 | --- | --- | --- | --- |
 | M1 基础骨架 | 小程序工程与页面注册；本机存储命名空间；数据层 6 类实体与偏好单例；首启隐私说明 | `app.ts/json`、`shared/utils/storage.ts`、`shared/services/records.ts` | 已完成 |
 | M2 本地记录八页 | 工作台、个人档案、症状时间线、资料摘录、待问清单、就医摘要、设置；导航与空态 | `pages/*` 八页各 `.ts/.wxml/.wxss/.json` | 已完成 |
 | M3 整理与导出 | 离线整理引擎、摘要组装、摘要图片导出、附件本地保存、操作留痕 | `shared/services/organizer|brief|poster|attachments|oplog.ts` | 已完成 |
-| M4 AI 双模式与安全护栏 | 客户端网络出口与脱敏、发送前预览；代理 HTTP 层、配置契约、编排器、LLM/检索适配器、红标、输出校验、记忆提炼、演示模式 | `shared/services/aiClient|demoAi.ts`、`pages/ai/*`、`server/*` | 已完成 |
+| M4 AI 三种模式与安全护栏 | 客户端网络出口与脱敏、发送前预览；代理 HTTP 层、配置契约、编排器、LLM/检索适配器、红标、输出校验、记忆提炼、演示模式 | `shared/services/aiClient|demoAi.ts`、`pages/ai/*`、`server/*` | 已完成 |
 | M5 无障碍·门禁·登记材料 | 全局字号与高对比、静态扫描与检查脚本、E2E 与截图引擎、功能清单/演示脚本/来源说明、确定性截图集 | `shared/ui/a11y.ts`、`scripts/*`、`tests/e2e/*`、`docs/*`、`artifacts/screenshots/*` | 已完成 |
 
-**迭代与验收记录**：项目以提交 `afd8469`（"baseline before AI assistant refactor"，41 文件）
-为基线，随后按任务编号连续迭代（T4–T44）。收尾阶段执行四轮独立验收并全部通过：
+**迭代与验收记录**：本仓库提交历史共 10 个提交，自 `f054185`（Initial commit）起至
+`fda1101`（HEAD）止，按任务编号连续迭代。收尾阶段执行四轮独立验收并全部通过
+（验收报告为**本机运行产物**，见 §6.1 说明）：
 
-| 轮次 | 报告 | 结论 |
+| 轮次 | 报告（本机运行产物） | 结论 |
 | --- | --- | --- |
 | F1 计划合规 | `artifacts/final/plan-compliance.md` | APPROVE（范围内条目全通过，红线零命中） |
 | F2 代码质量 | `artifacts/final/code-quality.md` | APPROVE（初判问题修复后复核通过） |
-| F3 运行时 QA | `artifacts/final/runtime-qa.md` | APPROVE（E2E 全绿，18 张截图逐字节一致） |
+| F3 运行时 QA | `artifacts/final/runtime-qa.md` | APPROVE |
 | F4 范围保真 | `artifacts/final/scope-fidelity.md` | APPROVE（成功标准逐条核对） |
 
 ---
@@ -255,6 +265,10 @@
 | 端到端 | `tests/e2e/*.spec.mjs`（微信开发者工具自动化）：八个页面、AI 同意流、降级、无障碍、演示模式、脱敏 | `artifacts/e2e/*.json` |
 | 截图确定性 | `tests/e2e/screenshots-soft.mjs`：演示模式下两次冷启动逐张 SHA256 比对 | `artifacts/screenshots/index.json` |
 
+> 说明：上表「产出」列的 `artifacts/` 是**本机运行产物**目录，已被 `.gitignore` 忽略，
+> **不随仓库分发**。此处引用它们只为说明产物形态；克隆后的仓库中并不存在这些文件，
+> 需在本机重跑对应命令才会生成。
+
 ### 6.2 门禁命令
 
 ```bash
@@ -263,14 +277,15 @@ npm run test:scan     # 静态扫描
 npm run test:logic    # 本地整理与摘要逻辑
 npm run test:server   # 代理端契约检查
 npm run test:e2e      # 端到端（需微信开发者工具）
-npm run screenshots   # 生成演示截图集
+npm run screenshots       # 常规截图 + 大字长文本 OCR 溢出探针（需微信开发者工具）
+npm run screenshots:soft  # 软著登记用确定性截图集（需微信开发者工具）
 ```
 
 ### 6.3 验收标准
 
 1. 上述门禁全部通过；
 2. 8 个页面均可正常渲染、无白屏与报错；
-3. AI 双模式可用；资料整理不含医疗判断；问诊建议每条建议带权威来源，或无来源时显示
+3. AI 三种模式可用（资料整理 / 问诊建议 / 问诊引导）；资料整理不含医疗判断；问诊建议每条建议带权威来源，或无来源时显示
    「未找到权威资料，请向医生确认」；
 4. 外部 AI 关闭、代理不可用、输出未过校验三种情形均按设计降级，不编造内容；
 5. 18 张登记截图在两次冷启动下逐字节一致。
@@ -281,7 +296,7 @@ npm run screenshots   # 生成演示截图集
 
 | 风险 | 影响 | 对策 |
 | --- | --- | --- |
-| 真机无法访问 `127.0.0.1` | 真机上 AI 功能不可用 | 明确产品边界：AI 双模式与演示仅在开发者工具/本地环境成立；真机为纯本地记录体验 |
+| 真机无法访问 `127.0.0.1` | 真机上 AI 功能不可用 | 明确产品边界：AI 三种模式与演示仅在开发者工具/本地环境成立；真机为纯本地记录体验 |
 | 上游模型/检索不可用 | 问诊建议无结果 | 自动降级本地整理并如实说明；绝不伪造 AI 内容 |
 | 模型输出不合规 | 可能产出越界表述 | 红标短路 + 白名单重建 + 禁词/长度/科室/引用四重校验，失败即降级 |
 | 引用不可信 | 展示虚假来源 | 引用必须与本次已抓取来源逐字匹配，且域名过权威白名单 |
@@ -302,7 +317,7 @@ npm run screenshots   # 生成演示截图集
 | 测试 | `tests/e2e/`（E2E 规格、截图引擎） |
 | 文档 | `README.md`、`hospital-ai-miniapp/README.md`、`server/README.md`、`docs/*` |
 | 登记材料 | 本计划书、`docs/USER-MANUAL.md`、`docs/FEATURE-LIST.md`、`docs/DEMO-SCRIPT.md`、`docs/SOURCES.md` |
-| 证据 | `artifacts/`（扫描、检查、E2E、验收报告、确定性截图集） |
+| 证据 | `artifacts/`（扫描、检查、E2E、验收报告、确定性截图集；**本机运行产物，已被 `.gitignore` 忽略，不随仓库分发**） |
 
 ---
 
@@ -311,7 +326,7 @@ npm run screenshots   # 生成演示截图集
 ### 9.1 目录结构
 
 ```
-医疗导诊/
+medical-navigation/
 ├── README.md                 项目总览与运行说明
 ├── package.json              统一命令入口
 ├── hospital-ai-miniapp/      微信小程序（8 页面 + 共享模块）
@@ -339,6 +354,7 @@ npm run dev:api          # 监听 http://127.0.0.1:8787
 | --- | --- |
 | 资料整理模式 | 把口语化原话整理为要点/提取/待补充/可问问题，不做医疗判断 |
 | 问诊建议模式 | 结合带入资料给出健康方向、建议科室、来源链接、日常建议与可问问题 |
+| 问诊引导模式 | 一次只问一个问题帮用户补齐信息，只收集事实、不给方向/科室/来源，答完可存为症状记录 |
 | 红标 | 需要立即线下就医的信号词；命中即短路为固定安全提示 |
 | 权威白名单 | 允许作为来源展示的域名清单（`authorityDomains`） |
 | 降级 | 上游不可用或校验不过时改用本地整理，并如实说明 |

@@ -10,7 +10,7 @@
 ## 1. Lucide（界面矢量图标）
 
 - **用途**：小程序界面中的矢量图标。
-- **来源与版本**：`lucide-static` v1.48.0，项目 <https://lucide.dev>，仓库 <https://github.com/lucide-icons/lucide>。
+- **来源与版本**：npm 包 `lucide-static` 1.48.0（2026-09-24 发布，可在 npm registry 核对）；项目 <https://lucide.dev>，仓库 <https://github.com/lucide-icons/lucide>（该仓库的 tag 为 `v0.x` 系列，不含 `v1.48.0`，故许可正文按仓库 `main` 分支核取）。
 - **集成方式**：图标以 base64 SVG 掩码内联进 `hospital-ai-miniapp/styles/icons.wxss`，
   **运行时不发起任何网络请求**，也不新增任何依赖。
 - **许可**：ISC License（其中由 Feather 项目派生的图标部分为 MIT License）。两种许可的全文见下。

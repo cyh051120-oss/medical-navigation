@@ -9,19 +9,19 @@
 
 | 编号 | 整改项 | 改动 | 验证方式与结果 |
 | --- | --- | --- | --- |
-| **A1** | 清除工作区内的真实 API key | `server/config.json` 的 `llm.apiKey` 置空（保留 `baseUrl`/`model` 作本地配置） | `grep -rn "user_2cBT" .` → **无命中**（**已修订：真实 key 移至仓库外，见第九节**） |
-| **A2** | 静态扫描不再内置真实凭据前缀 | `scripts/static-scan.mjs`：原硬编码的 `957302d0\|ep-20260331231749\|ep-20260401212857\|I8EQ8B9\|qVZc38oXuTE7` 改为**结构化模式**（`\bep-\d{14}\b`、`\bsk-[A-Za-z0-9_-]{16,}`、`\bAKID[A-Za-z0-9]{16,}`、`ark\.cn-beijing`、厂商域名），并支持用环境变量 `MHP_SECRET_PATTERN` 追加特定字面量做定向复扫 | `node scripts/static-scan.mjs` → `capability bans: 0`、`secrets/domains: 0`、`json 0`、`syntax 0`（`ts check` 当时报 error 仅因本机 spawn 问题；已在 AI 重构轮修复，现为 `passed`，见第九节） |
-| **A3** | 证据文件中的明文凭据掩码化 | `artifacts/scan/credentials-after.txt:5`、`artifacts/final/plan-compliance.md:61-63`、`artifacts/qa/4-failure.txt`（`I8EQ8B9FAKEKEY` → `I8EQ****FAKEKEY`、`"match":"I8EQ8B9"` → `"match":"I8EQ****"`）。仓库自身 `docs/SECURITY-REVOKE.md` 本就禁止任何文件写入明文凭据，此为合规修复 | `grep -rnE "957302d0\|ep-20260331231749\|ep-20260401212857\|I8EQ8B9\|qVZc38oXuTE7" .` → **无命中** |
+| **A1** | 清除工作区内的真实 API key | `server/config.json` 的 `llm.apiKey` 置空（保留 `baseUrl`/`model` 作本地配置） | `git grep -nE "user_[A-Za-z0-9]{10,}"` → **无命中**（**已修订：真实 key 移至仓库外，见第九节**） |
+| **A2** | 静态扫描不再内置真实凭据前缀 | `scripts/static-scan.mjs`：原硬编码的凭据前缀（API Key `9573****`、接入点 `ep-****`、百度 ASR AK `I8EQ****` / SK `qVZc****`，均为不完整掩码，完整值不在仓库内）改为**结构化模式**（`\bep-\d{14}\b`、`\bsk-[A-Za-z0-9_-]{16,}`、`\bAKID[A-Za-z0-9]{16,}`、方舟默认域名、相关厂商域名），并支持用环境变量 `MHP_SECRET_PATTERN` 追加特定字面量做定向复扫 | `node scripts/static-scan.mjs` → `capability bans: 0`、`secrets/domains: 0`、`json 0`、`syntax 0`（`ts check` 当时报 error 仅因本机 spawn 问题；已在 AI 重构轮修复，现为 `passed`，见第九节） |
+| **A3** | 证据文件中的明文凭据掩码化 | `artifacts/scan/credentials-after.txt:5`、`artifacts/final/plan-compliance.md:61-63`、`artifacts/qa/4-failure.txt`（明文 AK 及其 `match` 字段均已改为 `I8EQ****` 掩码）。仓库自身 `docs/SECURITY-REVOKE.md` 本就禁止任何文件写入明文凭据，此为合规修复 | `git grep -nE "\bep-\d{14}\b\|\bsk-[A-Za-z0-9_-]{16,}\|\bAKID[A-Za-z0-9]{16,}"` → **无命中** |
 | **B1** | 版本号统一 | `package.json` `version` `0.0.0` → `1.0.0`。**未改** `hospital-ai-miniapp/config/texts.ts` 的 `ABOUT.version`（`'版本 1.0 · 本地优先'`），以保持设置页两张截图的字节一致 | 界面文案仍为「版本 1.0」，仓库内版本表述不再出现 `0.0.0` |
 | **B5** | 补版本记录 | 新增 `CHANGELOG.md`（`1.0.0` 条目：小程序 / 代理 / 文档与工程三段新增项） | 与 `package.json` 的 `1.0.0` 及界面「版本 1.0」一致 |
-| **B6** | 补第三方许可声明 | 新增 `THIRD-PARTY-NOTICES.md`：Lucide ISC 全文 + Feather 派生图标的 MIT 全文、devDependencies 许可表、权威域名清单说明 | 许可正文取自上游 LICENSE（URL 与拉取日期已注明；`v1.48.0` tag 不存在，故用 `main`） |
-| **B7** | 源码材料导出 | 新增 `scripts/export-source-material.mjs`；产出 `artifacts/soft-copyright/source-listing.txt`、`source-listing-60pages.txt`、`source-material.json` | 实跑：**67 文件 / 15,370 行**，共 **311 页**（AI 重构轮后重跑，见第九节），输出前 30 + 后 30 页；清单内只出现代码标识符（`apiKey: string`、`Bearer ${cfg.apiKey}`），**无真实密钥字面量**；`server/config.json` 已排除 |
-| **C1** | 修正过时的验收结论 | 在 `artifacts/final/scope-fidelity.md` 的 A3 条目后加「后续修订」脚注：字面提示「未找到权威资料，请向医生确认」**当前已实现**（`config/texts.ts:369` 定义、`pages/ai/ai.ts:239` 渲染、`tests/e2e/ai-page.spec.mjs:489` 断言、`artifacts/e2e/ai-page.json:303` 实测），原「零命中」结论针对更早 HEAD | 已按上文四处引用逐条核对 |
+| **B6** | 补第三方许可声明 | 新增 `THIRD-PARTY-NOTICES.md`：Lucide ISC 全文 + Feather 派生图标的 MIT 全文、devDependencies 许可表、权威域名清单说明 | 许可正文取自上游 LICENSE（URL 与拉取日期已注明；npm 包 `lucide-static` 1.48.0 存在，但上游仓库 tag 为 `v0.x` 系列、无 `v1.48.0`，故许可正文按仓库 `main` 分支核取） |
+| **B7** | 源码材料导出 | 新增 `scripts/export-source-material.mjs`；产出 `artifacts/soft-copyright/source-listing.txt`、`source-listing-60pages.txt`、`source-material.json` | 实跑：**73 文件 / 15,799 行**，共 **319 页**（据本机产物 `artifacts/soft-copyright/source-material.json` 的 `totals`；该目录不入库，见第九节），输出前 30 + 后 30 页；清单内只出现代码标识符（`apiKey: string`、`Bearer ${cfg.apiKey}`），**无真实密钥字面量**；`server/config.json` 已排除 |
+| **C1** | 修正过时的验收结论 | 在 `artifacts/final/scope-fidelity.md` 的 A3 条目后加「后续修订」脚注：字面提示「未找到权威资料，请向医生确认」**当前已实现**（`config/texts.ts: AI.noAuthorityNotice` 定义、`shared/services/aiRender.ts: consultBlocks` 渲染、`tests/e2e/ai-page.spec.mjs: 'consult-no-source'` 断言；`artifacts/e2e/ai-page.json` 为**本机运行产物**，不入库），原「零命中」结论针对更早 HEAD | 已逐条核对（改用文件 + 符号级锚点，避免行号漂移） |
 
 ### 附：本次运行的副作用（已处理）
 
 - 运行 `node scripts/static-scan.mjs` 会生成 `artifacts/scan/static-scan-full.json`（未跟踪产物，项目自身 churn 纪律要求运行后删除，见 `artifacts/final/code-quality.md:34`）——**已删除**。
-- 同一次运行会重写 `artifacts/scan/neutral-terms.json`（report-only 报告，新增 `generatedAt` 时间戳）。本次改动不涉及任何中性词（科室/医生/医院/就诊/急诊），**词条与计数未变**，仅时间戳更新；如需严格还原，可在有 git 的环境执行 `git checkout -- artifacts/scan/neutral-terms.json`。
+- 同一次运行会重写 `artifacts/scan/neutral-terms.json`（report-only 报告，新增 `generatedAt` 时间戳）。本次改动不涉及任何中性词（科室/医生/医院/就诊/急诊），**词条与计数未变**，仅时间戳更新。注意：`artifacts/` 整个目录**未被 Git 跟踪**（`.gitignore` 忽略），因此**无法用 `git checkout -- artifacts/...` 还原**；如需回到旧内容，请重跑对应命令重新生成。
 
 ---
 
@@ -29,9 +29,9 @@
 
 | 编号 | 事项 | 说明 |
 | --- | --- | --- |
-| **A4** | **打包边界** | 只取 `医疗导诊/` 目录。**不要**打包其父目录：父目录含 `.commandcode/taste/taste.md`（行为画像笔记）与游离的 `project.config.json` |
-| **A5** | **历史凭证吊销** | 按 `docs/SECURITY-REVOKE.md:16-31` 到控制台吊销：火山引擎方舟 API Key、两个推理接入点、百度智能云 ASR 的 AK/SK。源码存根化 ≠ 吊销 |
-| **B2** | **AppID 口径确认** | 源码现为 `touristappid`（测试号，`hospital-ai-miniapp/project.config.json:56`）；证据文件保留历史值 `wxd3658bde1dabe949`。请确认申报材料以哪个口径为准（软著登记本身不要求 AppID） |
+| **A4** | **打包边界** | 只取项目根目录 `medical-navigation/`。**不要**打包其父目录：父目录含 `.commandcode/taste/taste.md`（行为画像笔记）与游离的 `project.config.json` |
+| **A5** | **历史凭证吊销** | 按 `docs/SECURITY-REVOKE.md` 的「用户必须执行」一节到控制台吊销：火山引擎方舟 API Key、两个推理接入点、百度智能云 ASR 的 AK/SK。**从仓库移除 ≠ 吊销**，且仓库已被推送到公开远端 |
+| **B2** | **AppID 口径确认** | 源码现为 `touristappid`（测试号，`hospital-ai-miniapp/project.config.json: appid`）；证据文件保留历史值 `wxd3658bde1dabe949`。请确认申报材料以哪个口径为准（软著登记本身不要求 AppID） |
 | **B4** | **测试期 key 轮换** | 联调时贴入对话的那个 Command Code API key 建议吊销重建；新 key 只填在**仓库外**的 `%USERPROFILE%\.medical-prep\config.local.json`（经 `MHP_CONFIG_PATH` 注入，见第九节）；`server/config.json` 保持空 key 模板 |
 | **C2** | 确认接受「TTS/ASR 不实现」（`docs/A11Y-DECISION.md §5`） | 需你表态 |
 | **C3** | 确认接受「真机 `127.0.0.1` 不可达，AI 仅开发者工具/演示模式成立」 | 需你表态 |
@@ -62,7 +62,7 @@
 
 ```bash
 # 1) 明文凭据零残留（期望：无输出）
-grep -rnE "957302d0|ep-20260331231749|ep-20260401212857|I8EQ8B9|qVZc38oXuTE7|user_2cBT[A-Za-z0-9]{10,}" . | grep -v node_modules   # 用 ≥10 位后缀，避免命中本文档自身的 8 位掩码
+git grep -nE "\bep-[0-9]{14}\b|\bsk-[A-Za-z0-9_-]{16,}|\bAKID[A-Za-z0-9]{16,}|user_[A-Za-z0-9]{10,}"   # 期望：无输出
 
 # 2) 静态扫描（需先 npm i 以获得 tsc，否则 ts 检查会报 error）
 npm run test:scan
@@ -73,7 +73,7 @@ grep -n '"apiKey"' server/config.json
 # 4) 版本一致性（期望：1.0.0）
 grep -n '"version"' package.json
 
-# 5) 重新导出源码材料（改动产品源码后需重跑；期望：67 文件 / 15,370 行 / 311 页）
+# 5) 重新导出源码材料（改动产品源码后需重跑；期望：73 文件 / 15,799 行 / 319 页）
 node scripts/export-source-material.mjs
 ```
 
@@ -84,7 +84,7 @@ node scripts/export-source-material.mjs
 | 材料 | 来源 | 状态 |
 | --- | --- | --- |
 | 软件著作权登记申请表 | 中国版权保护中心在线填报 | 待你填报 |
-| 源程序（前 30 页 + 后 30 页，连续，每页 ≥50 行） | 已导出：`artifacts/soft-copyright/source-listing-60pages.txt`（前 30 + 后 30 页）；全量清单 `source-listing.txt`（67 文件 / 15,370 行 / 311 页）。打印成 PDF 即可提交 | **已导出** |
+| 源程序（前 30 页 + 后 30 页，连续，每页 ≥50 行） | 已导出：`artifacts/soft-copyright/source-listing-60pages.txt`（前 30 + 后 30 页）；全量清单 `source-listing.txt`（73 文件 / 15,799 行 / 319 页）。打印成 PDF 即可提交 | **已导出** |
 | 软件说明书（操作手册） | `docs/USER-MANUAL.md`（含 18 张界面截图） | **已完成** |
 | 项目开发计划书 | `docs/PROJECT-PLAN.md` | **已完成** |
 | 功能清单 | `docs/FEATURE-LIST.md` | 已有 |
@@ -107,12 +107,12 @@ AI 助手新增第三张模式卡「问诊引导」：先说一段情况 → AI 
 | 材料 | 影响 | 处理 |
 | --- | --- | --- |
 | `artifacts/screenshots/soft-copyright/{ai-14,ai-32,ai-consult-14,ai-consult-32}.png` | AI 页新增第三张卡 → 这 4 张**图样失效** | **必须在原 macOS 环境重跑** `node tests/e2e/screenshots-soft.mjs`，并重写 `artifacts/screenshots/index.json`（shots 与 hash_pairs 各 4 处 sha256 + `determinism` 块）；建议新增 `ai-interview-14/32.png`（总数 18 → 20） |
-| `docs/USER-MANUAL.md` 4.7 节 | 需补「问诊引导」操作说明与按钮文案 | 待补 |
-| `docs/DEMO-SCRIPT.md` 第 7 步 | 需补追问流程 | 待补 |
-| `docs/PROJECT-PLAN.md` 功能编号表 | 需补一条 F 编号 | 待补 |
+| `docs/USER-MANUAL.md` 4.7 节 | 已补「问诊引导」操作说明、三种模式卡片与按钮文案 | **已完成** |
+| `docs/DEMO-SCRIPT.md` 第 7 步 | 已改为「三种模式」并补追问流程 | **已完成** |
+| `docs/PROJECT-PLAN.md` 功能编号表 | 已补 F-17「AI 问诊引导模式」，并同步 §3.1 架构图与 §3.3 模块表 | **已完成** |
 | `docs/FEATURE-LIST.md` | 已补一行（第三节） | **已完成** |
-| `server/README.md` | 需补 `POST /api/interview` 一节 | 待补 |
-| `tests/e2e/ai-page.spec.mjs` | 静态不变量需放行第三张卡（`data-mode="interview"`） | 待补（本机无法跑 e2e） |
+| `server/README.md` | 已补 `POST /api/interview` 一节 | **已完成** |
+| `tests/e2e/ai-page.spec.mjs` | 静态不变量只要求 `data-mode="organize"` / `"consult"` 存在，本就不排斥第三张卡 | **无需修改** |
 | `scripts/check-interview.mjs`、`package.json` | 新增契约检查并接入 `test:server` 链 | **已完成** |
 
 **本机验证情况（Windows）**：`npm run typecheck` exit 0；`node scripts/check-interview.mjs` **31/31**；
@@ -128,7 +128,7 @@ AI 助手新增第三张模式卡「问诊引导」：先说一段情况 → AI 
 首页从「启动器 + 状态卡」改为**产物驱动的工作台**：首屏加一句话产品定位与「主行动」
 （按有无记录在「记一条症状 / 生成就医摘要」之间切换）；「健康档案」从大卡片 + 全宽按钮
 降为一行紧凑状态；「最近记录」标签固定列宽（各行摘要左边缘对齐）；入口由 8 个平铺磁贴
-改为「记录 / 整理与带走 / 设置」三组 7 项（AI 双模式合并为「AI 助手」）；空态补上
+改为「记录 / 整理与带走 / 设置」三组 7 项（AI 各模式合并为「AI 助手」）；空态补上
 「记一条症状」按钮并改写文案（原文案让用户「点击下方按钮」，而那个卡片里没有按钮）。
 
 诊断报告见 `.commandcode/design/review-report.md`（工作区根目录，不在提交边界内）。
@@ -216,8 +216,8 @@ devtools automation endpoint ws://127.0.0.1:9420 never came up within 90000ms
 
 ### 9.5 真实 key 重新外置（对应 A1 修订）
 - `server/config.json` 的 `llm.apiKey` 再次置空（0 字符），成为归档用模板。
-- 真实 key 移至**仓库外** `%USERPROFILE%\.medical-prep\config.local.json`，经 `index.ts` 已支持的 `MHP_CONFIG_PATH` 注入；新增启动器 `scripts/dev-api-local.ps1` 与 `npm run dev:api:local`。
-- 自检：`grep -rnE '957302d0|…|user_2cBT[A-Za-z0-9]{10,}' .` → **无命中**（`config.json` 已无 key）。
+- 真实 key 移至**仓库外** `%USERPROFILE%\.medical-prep\config.local.json`，经 `index.ts` 已支持的 `MHP_CONFIG_PATH` 注入；新增启动器 `scripts/dev-api-local.mjs` 与 `npm run dev:api:local`。
+- 自检：`git grep -nE '\bep-[0-9]{14}\b|\bsk-[A-Za-z0-9_-]{16,}|user_[A-Za-z0-9]{10,}'` → **无命中**（`config.json` 已无 key）。
 
 ### 9.6 本机验证结果（Windows）
 | 项 | 结果 |
@@ -231,7 +231,7 @@ devtools automation endpoint ws://127.0.0.1:9420 never came up within 90000ms
 | 真实链路 consult ×5 | 5/5 成功（0 错误）|
 
 ### 9.7 源码材料影响
-- 新增 4 个 `.ts` 源文件 + 若干行为改动 → 重跑 `node scripts/export-source-material.mjs`：**67 文件 / 15,370 行 / 311 页**（原 63 / 14,944 / 302）。
+- 新增 4 个 `.ts` 源文件 + 若干行为改动 → 重跑 `node scripts/export-source-material.mjs`：**73 文件 / 15,799 行 / 319 页**（据本机产物 `artifacts/soft-copyright/source-material.json` 的 `totals`；目录不入库）。
 - `scripts/check-ai-render.mjs` 将原临时断言固化为永久用例并接入 `test:logic`。
 - **仍需人工**：`artifacts/screenshots/soft-copyright/*` 与 `tests/e2e/*` 的界面级重跑（依赖微信开发者工具 + 原 macOS 环境），本机不可执行。
 

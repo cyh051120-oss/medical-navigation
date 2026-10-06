@@ -27,24 +27,25 @@
 | 摘要复制 | 将摘要文本写入系统剪贴板 | `hospital-ai-miniapp/shared/services/brief.ts: toClipboard`；`hospital-ai-miniapp/pages/brief/brief.ts: onCopy` |
 | 摘要图片导出 | 经 2D canvas 生成 750×1334 图片，支持保存到相册与分享 | `hospital-ai-miniapp/pages/brief/brief.ts: onExportImage` |
 | 导出全部 | 把文字记录与附件名称/路径引用写入本机文件 | `hospital-ai-miniapp/pages/settings/settings.ts: onExport / buildExportPayload` |
-| 清除所有本地资料 | 两步确认后清除记录、旧命名空间与附件目录 | `hospital-ai-miniapp/pages/settings/settings.ts: performWipe`；`hospital-ai-miniapp/shared/services/records.ts: deleteAll`；`hospital-ai-miniapp/shared/services/attachments.ts: clearAttachments` |
+| 清除所有本地资料 | 两步确认后清除记录、旧命名空间、附件目录与本机导出文件 | `hospital-ai-miniapp/pages/settings/settings.ts: performWipe`；`hospital-ai-miniapp/shared/services/records.ts: deleteAll`；`hospital-ai-miniapp/shared/services/attachments.ts: clearAttachments / clearExports` |
 
-## 三、AI 双模式与安全边界
+## 三、AI 三种模式与安全边界
 
 | 功能 | 说明 | 代码锚点 |
 | --- | --- | --- |
 | AI 资料整理（组织）模式 | 把一段口语化原话整理成要点、提取线索、待补充项与可问问题 | `hospital-ai-miniapp/pages/ai/ai.ts: setMode / organizeBlocks` |
-| AI 问诊建议（咨询）模式 | 结合带入资料给出健康方向、建议就诊科室、来源链接、日常建议与可问问题 | `hospital-ai-miniapp/pages/ai/ai.ts: setMode / consultBlocks` |
+| AI 问诊建议（咨询）模式 | 结合带入资料给出健康方向、建议就诊科室、来源链接、日常建议与可问问题 | `hospital-ai-miniapp/pages/ai/ai.ts: setMode`；`hospital-ai-miniapp/shared/services/aiRender.ts: consultBlocks` |
 | 发送前预览确认 | 按段展示将发送的档案摘要、记录摘录、记忆与对话；确认后才发送，预览即发送字节 | `hospital-ai-miniapp/shared/services/aiClient.ts: buildAskPayload / reassembleAskPayload / sendAsk`；`hospital-ai-miniapp/pages/ai/ai.ts: buildPreview` |
 | 权威来源白名单过滤 | 只有命中白名单域名的检索结果才作为来源展示；严格子域匹配 | `server/authorities.ts: DEFAULT_AUTHORITY_DOMAINS / resolveAuthorityDomains / isAuthorityUrl`；`server/providers/search.ts: search` |
-| 「未找到权威资料」降级 | 无命中白名单来源时不产生任何方向/建议引用；引用必须与本次已获取来源完全一致，否则降级为本地整理；界面在来源位置展示提示「未找到权威资料，请向医生确认」 | `server/prompts.ts: sourcesBlock`；`server/validate.ts: resolveCitation / validateConsultOutput`；`server/orchestrator.ts: unsafeResult`；`hospital-ai-miniapp/pages/ai/ai.ts: consultBlocks / citationParts`；`hospital-ai-miniapp/config/texts.ts: AI.noAuthorityNotice` |
+| 「未找到权威资料」降级 | 无命中白名单来源时不产生任何方向/建议引用；引用必须与本次已获取来源完全一致，否则降级为本地整理；界面在来源位置展示提示「未找到权威资料，请向医生确认」 | `server/prompts.ts: sourcesBlock`；`server/validate.ts: resolveCitation / validateConsultOutput`；`server/orchestrator.ts: unsafeResult`；`hospital-ai-miniapp/shared/services/aiRender.ts: consultBlocks / citationParts`（`citationParts` 为模块内部辅助，未导出）；`hospital-ai-miniapp/config/texts.ts: AI.noAuthorityNotice` |
 | 同意与发送范围 | 外部 AI 默认关闭；开启前需阅读并同意发送范围；问诊建议首次进入需确认 | `hospital-ai-miniapp/pages/settings/settings.ts: onAiEnabledChange`；`hospital-ai-miniapp/pages/ai/ai.ts: requestConsultConsent`；`hospital-ai-miniapp/config/texts.ts: PRIVACY / CONSENT` |
 | 姓名/手机号/证件号脱敏 | 内容离开本机前对所有字段做固定规则脱敏替换 | `hospital-ai-miniapp/shared/services/aiClient.ts: redactText / collectKnownNames`（占位符 `NAME_PLACEHOLDER / PHONE_PLACEHOLDER / ID_PLACEHOLDER`） |
 | 代理不可用时的本地整理降级 | 代理未启动或出错时不编造内容，改用纯本地整理，并在界面说明原因 | `hospital-ai-miniapp/pages/ai/ai.ts: handleSendResult / autoLocalSend / localFallbackForUnsafe / onLocalOrganize`；`hospital-ai-miniapp/shared/services/organizer.ts: organize` |
 | 单一出口与地址白名单 | 只允许访问本机回环地址的代理，其它地址结构化拒绝 | `hospital-ai-miniapp/shared/services/aiClient.ts: ALLOWED_PROXY_HOSTS / assertProxyUrl / postToProxy` |
+| 平台隐私授权 | 开启 `__usePrivacyCheck__`；设置页提供「隐私授权」入口（官方 `open-type="agreePrivacyAuthorization"` 同意按钮 + 查看协议全文），授权请求到达时弹出同意浮层；未同意前涉及隐私的接口不可用，应用内可直接完成同意，绝不代替用户同意 | `hospital-ai-miniapp/app.json: __usePrivacyCheck__`；`hospital-ai-miniapp/app.ts: setPrivacyAuthResolver / onNeedPrivacyAuthorization`；`hospital-ai-miniapp/pages/settings/settings.ts: registerPrivacyResolver / onAgreePrivacyAuthorization / onOpenPrivacyContract` |
 | 结果回流本地记录 | AI 结果可「存为资料」或「加入待问清单」 | `hospital-ai-miniapp/pages/ai/ai.ts: onSaveAsNote / onDraftConfirm / onAddToQuestions` |
 | AI 记忆自动提炼 | 对话后按开关自动提炼偏好记忆，带去重与上限，可中途关闭 | `hospital-ai-miniapp/pages/ai/ai.ts: maybeAutoExtract`；`hospital-ai-miniapp/shared/services/records.ts: memory` |
-| 历史对话本地持久化 | 对话记录只写入本机存储，超出会话即清 | `hospital-ai-miniapp/pages/ai/ai.ts: loadMessages / appendMessage` |
+| 历史对话本地持久化 | 对话记录只写入本机存储，按最近 200 条裁剪上限；损坏/超限写入不会连带清空历史 | `hospital-ai-miniapp/pages/ai/ai.ts: loadMessages / appendMessage / persistMessages` |
 | 演示模式（开发环境确定性） | 开发环境下 AI 输出改为本地固定内容，全程无外部请求，同一输入结果一致；**单开关即生效，无需开启外部 AI 调用** | `hospital-ai-miniapp/pages/settings/settings.ts: onDemoModeChange / isDevelopEnv`；`hospital-ai-miniapp/pages/ai/ai.ts: onSend / onConfirmSend / maybeAutoExtract`；`hospital-ai-miniapp/shared/services/demoAi.ts: demoAsk / demoExtractMemory` |
 | 问诊引导（连续追问） | 先说一段情况，AI **一次只问一个问题**帮你补齐信息；每轮作答前仍走「发送前确认」；答完（或用户点「结束追问」）弹出「保存为症状记录」草稿，确认后写入症状记录。追问**不给方向/科室/来源**，只收集信息 | `hospital-ai-miniapp/pages/ai/ai.ts: setMode / buildInterviewPreview / handleInterviewResult / onEndInterview / onInterviewDraftConfirm`；`hospital-ai-miniapp/shared/services/aiClient.ts: buildInterviewPayload / sendInterview`；`server/interview.ts: interview`；`server/prompts.ts: INTERVIEW_SYSTEM_PROMPT / INTERVIEW_SLOTS` |
 
@@ -52,8 +53,8 @@
 
 | 功能 | 说明 | 代码锚点 |
 | --- | --- | --- |
-| 大字模式（全局 14–32） | 8 个页面随偏好连续缩放；字号由 `--mhp-scale` 统一驱动 | `hospital-ai-miniapp/shared/ui/a11y.ts: A11Y_DATA / readA11y / syncA11y`；`hospital-ai-miniapp/pages/settings/settings.ts: onFontSizeChanging / onFontSizeChange` |
-| 高对比度 | 一键切换高对比配色，页面经 `is-hc` 类消费变量映射 | `hospital-ai-miniapp/pages/settings/settings.ts: onHighContrastChange`；`hospital-ai-miniapp/shared/ui/a11y.ts: readA11y` |
+| 大字模式（全局 14–32） | 8 个页面随偏好连续缩放；字号由 `--mhp-scale` 统一驱动 | `hospital-ai-miniapp/shared/ui/a11y.ts: A11Y_DATA / syncA11y`（`readA11y` 为模块内部读取函数）；`hospital-ai-miniapp/pages/settings/settings.ts: onFontSizeChanging / onFontSizeChange` |
+| 高对比度 | 一键切换高对比配色，页面经 `is-hc` 类消费变量映射 | `hospital-ai-miniapp/pages/settings/settings.ts: onHighContrastChange`；`hospital-ai-miniapp/shared/ui/a11y.ts: readA11y`（模块内部读取函数） |
 
 ## 五、工程检查能力
 
