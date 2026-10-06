@@ -1,7 +1,7 @@
 <!-- pages/home/home.wxml — 个人工作台（任务 13）。
      任务 16：根节点内联 --mhp-scale（shared/ui/a11y.ts 写入），高对比加 is-hc。
      视觉充实版：问候 + 准备总览 + 记录概览 + 最近记录 + 使用提示；全局导航在左侧栏。 -->
-<view class="workbench app-shell {{highContrast ? 'is-hc' : ''}} {{sidebarCollapsed ? 'is-collapsed' : ''}}" style="--mhp-scale: {{scale}}">
+<view class="workbench app-shell {{highContrast ? 'is-hc' : ''}} {{sidebarCollapsed ? 'is-collapsed' : ''}}" style="--mhp-scale: {{scale}}; --mhp-layout-scale: {{layoutScale}}">
   <app-sidebar current="home" collapsed="{{sidebarCollapsed}}" scale="{{scale}}" bind:toggle="onSidebarToggle" />
 
   <!-- ① 问候与定位 -->
@@ -17,7 +17,7 @@
   <view class="wb-overview">
     <view class="wb-overview__head">
       <text class="wb-overview__title">{{home.profileTitle}}</text>
-      <text class="wb-overview__link" bindtap="onProfileTap">{{profileLinkLabel}}</text>
+      <text class="wb-overview__link" bindtap="onProfileTap" aria-role="button" aria-label="{{profileLinkLabel}}">{{profileLinkLabel}}</text>
     </view>
     <view class="wb-overview__metric">
       <text class="wb-overview__value">{{completeness.filled}}</text>
@@ -32,17 +32,17 @@
 
   <!-- ③ 记录概览（各类记录条数；点按进入对应页） -->
   <view class="wb-stats">
-    <view class="wb-stat" data-route="pages/symptoms/symptoms" bindtap="onEntryTap">
+    <view class="wb-stat" data-route="pages/symptoms/symptoms" bindtap="onEntryTap" aria-role="button" aria-label="{{home.statSymptoms}}">
       <view class="mhp-ico mhp-ico--stethoscope wb-stat__ico"></view>
       <text class="wb-stat__num">{{stats.symptoms}}</text>
       <text class="wb-stat__label">{{home.statSymptoms}}</text>
     </view>
-    <view class="wb-stat" data-route="pages/notes/notes" bindtap="onEntryTap">
+    <view class="wb-stat" data-route="pages/notes/notes" bindtap="onEntryTap" aria-role="button" aria-label="{{home.statNotes}}">
       <view class="mhp-ico mhp-ico--file-text wb-stat__ico"></view>
       <text class="wb-stat__num">{{stats.notes}}</text>
       <text class="wb-stat__label">{{home.statNotes}}</text>
     </view>
-    <view class="wb-stat" data-route="pages/questions/questions" bindtap="onEntryTap">
+    <view class="wb-stat" data-route="pages/questions/questions" bindtap="onEntryTap" aria-role="button" aria-label="{{home.statQuestions}}">
       <view class="mhp-ico mhp-ico--message-circle-question wb-stat__ico"></view>
       <text class="wb-stat__num">{{stats.questions}}</text>
       <text class="wb-stat__label">{{home.statQuestions}}</text>
@@ -62,6 +62,8 @@
         class="wb-empty__action"
         data-route="pages/symptoms/symptoms"
         bindtap="onEntryTap"
+        aria-role="button"
+        aria-label="{{home.emptyAction}}"
       >{{home.emptyAction}}</view>
     </view>
 
@@ -71,7 +73,9 @@
         wx:for="{{recentRecords}}"
         wx:key="key"
         data-route="{{item.route}}"
-        bindtap="onRecordTap"
+        bindtap="onEntryTap"
+        aria-role="button"
+        aria-label="{{item.label}} {{item.summary}}"
       >
         <text class="wb-row__tag">{{item.label}}</text>
         <text class="wb-row__summary">{{item.summary}}</text>

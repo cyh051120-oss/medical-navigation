@@ -16,8 +16,11 @@ page {
 
   /* ===== Palette · brand / semantic ===== */
   --color-primary: #2A4FD7;
-  --color-primary-hover: #1b39b2;
-  --color-danger: #F53F3F;
+  /* P1-36：--color-danger 由 #F53F3F（对 #FFFFFF 3.71:1 / 对 #F4F6F9 3.42:1）改为
+     #D02B2B（5.17:1 / 4.78:1），满足本文件对 --text-caption 所用的同一 4.5:1 门槛。 */
+  --color-danger: #D02B2B;
+  /* A13-07：--color-success 由 ai.wxss 的 .statusbar--ok（AI 已连接）消费，
+     与 --color-danger（离线/失败）构成状态色彩对；状态另有文本表达，不单靠颜色。 */
   --color-success: #00B42A;
 
   /* ===== Palette · text =====
@@ -33,6 +36,9 @@ page {
   --mhp-hc-surface: #1A1A1A;
   --mhp-hc-text: #FFFFFF;
   --mhp-hc-accent: #FFD400;
+  /* P1-36：高对比下 danger 独立于 accent（#FFD400），对 #1A1A1A 约 7.7:1，
+     保证「错误 / 代理离线」与「主操作 / 已连接」不再同色。 */
+  --mhp-hc-danger: #FF8A8A;
   --mhp-hc-border: #FFFFFF;
 
   /* ===== Type scale（四档版式层级，任务 41）=====
@@ -44,8 +50,6 @@ page {
   --mhp-lh-title: 1.3;
   --mhp-lh-body: 1.6;
   --mhp-lh-caption: 1.5;
-  --mhp-fw-regular: 400;
-  --mhp-fw-medium: 500;
   --mhp-fw-semibold: 600;
 
   /* ===== Spacing scale（4rpx 网格；结构间距的唯一来源） ===== */
@@ -72,14 +76,11 @@ page {
   /* ===== Elevation ===== */
   --shadow-sm: 0 4rpx 10rpx rgba(29, 33, 41, 0.04);
   --shadow-md: 0 10rpx 30rpx rgba(29, 33, 41, 0.05);
-  --shadow-lg: 0 24rpx 64rpx rgba(29, 33, 41, 0.08);
   --shadow-neon: 0 16rpx 40rpx rgba(42, 79, 215, 0.25);
 
   /* ===== Motion ===== */
   --motion-fast: 120ms;
   --motion-normal: 240ms;
-  --motion-slow: 360ms;
   --motion-spin: 900ms;
   --ease-standard: ease;
-  --ease-emphasized: cubic-bezier(0.2, 0.8, 0.2, 1);
 }

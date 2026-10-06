@@ -1,5 +1,7 @@
 <!-- components/app-sidebar/app-sidebar.wxml — 全局可折叠左侧导航栏。
-     scale 属性写入根节点 --mhp-scale；固定定位，页面内容经 app.wxss 让位。 -->
+     scale 属性写入根节点 --mhp-scale；--mhp-layout-scale 从页面根节点继承，驱动宽度。
+     收起态仅图标（P1-34）：每项带 aria-label 供读屏，长按弹出名称作为触摸端 tooltip，
+     底部开关带 aria-label 指明「展开/收起导航」。 -->
 <view class="sb {{collapsed ? 'sb--collapsed' : ''}}" style="--mhp-scale: {{scale}}">
   <view class="sb__brand">
     <view class="mhp-ico mhp-ico--clipboard-list sb__brand-ico"></view>
@@ -13,14 +15,24 @@
       wx:key="key"
       data-key="{{item.key}}"
       data-route="{{item.route}}"
+      data-label="{{item.label}}"
       bindtap="onTapItem"
+      bindlongpress="onItemLongPress"
+      hover-class="sb__item--hover"
+      aria-role="button"
+      aria-label="{{item.label}}{{item.key === current ? '，当前页' : ''}}"
     >
       <view class="mhp-ico mhp-ico--{{item.icon}} sb__item-ico"></view>
       <text class="sb__item-label" wx:if="{{!collapsed}}">{{item.label}}</text>
     </view>
   </scroll-view>
 
-  <view class="sb__toggle" bindtap="onToggle">
+  <view
+    class="sb__toggle"
+    bindtap="onToggle"
+    aria-role="button"
+    aria-label="{{collapsed ? '展开导航' : '收起导航'}}"
+  >
     <text class="sb__toggle-chev">{{collapsed ? '»' : '«'}}</text>
     <text class="sb__toggle-label" wx:if="{{!collapsed}}">收起</text>
   </view>

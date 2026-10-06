@@ -87,6 +87,10 @@
 
 /* caption tier */
 .wb-overview__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 88rpx;
+  padding: 0 var(--mhp-space-2);
   font-size: calc(24rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-caption);
   color: var(--color-primary);
@@ -234,10 +238,11 @@
   box-shadow: var(--shadow-sm);
 }
 
-/* 固定列宽：让最长/最短标签（资料 / 症状）之后的内容左边缘对齐 */
+/* 最小列宽随字号缩放：让最长/最短标签（资料 / 症状）之后的内容左边缘对齐，
+   同时保证大字档两字标签不被换行成竖排。 */
 .wb-row__tag {
   flex: none;
-  width: 88rpx;
+  min-width: calc(88rpx * var(--mhp-scale));
   box-sizing: border-box;
   padding: var(--mhp-space-1) 0;
   border-radius: var(--radius-sm);

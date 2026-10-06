@@ -16,9 +16,9 @@
 //   - 删除：wx.showModal 确认后经 records.questions.remove 删除。
 //   - 一键导入：把多行文本或程序化传入的问题交给 records.questions.importMany 去重后写入
 //     （归一化 = trim + 折叠空白 + 小写，与数据层同一规则）。返回 {imported, skipped} 并展示
-//     可见提示；全部重复时明确提示「没有新增」，绝不静默。此方法即 F 波 AI 页（任务 29-33）
-//     的回流入口：可传字符串数组或 {text, group?, source?} 数组；数据层 importMany 是所有
-//     来源共用的去重原语，本页不新增存储键、不自建影子存储。
+//     可见提示；全部重复时明确提示「没有新增」，绝不静默。可传字符串数组或
+//     {text, group?, source?} 数组；数据层 importMany 是所有来源共用的去重原语（AI 页回流
+//     直接调用它，不经本页），本页不新增存储键、不自建影子存储。
 //   - 无障碍（任务 16 契约）：data 展开 A11Y_DATA，onShow 调 syncA11y，根节点消费
 //     `--mhp-scale` 与 `is-hc`。
 //
@@ -155,7 +155,6 @@ Page({
     importText: '',
     importGroup: '',
     importHint: '',
-    importReport: null as QuestionImportReport | null,
     copy: QUESTIONS,
     buttons: BUTTONS,
     emptyText: EMPTY.questions,
@@ -164,6 +163,13 @@ Page({
   onShow() {
     syncA11y(this);
     syncSidebar(this);
+    if (typeof wx.setNavigationBarColor === 'function') {
+      const hc = this.data.highContrast === true;
+      wx.setNavigationBarColor({
+        frontColor: hc ? '#ffffff' : '#000000',
+        backgroundColor: hc ? '#000000' : '#ffffff',
+      });
+    }
     this.refresh();
   },
 
@@ -379,11 +385,11 @@ Page({
   // ----- 一键导入（AI / 整理器回流入口）-----
 
   onToggleImport() {
-    this.setData({ importOpen: !this.data.importOpen, importHint: '', importReport: null });
+    this.setData({ importOpen: !this.data.importOpen, importHint: '' });
   },
 
   onImportTextInput(event: WechatMiniprogram.TextareaInput) {
-    this.setData({ importText: event.detail.value, importHint: '', importReport: null });
+    this.setData({ importText: event.detail.value, importHint: '' });
   },
 
   onImportGroupInput(event: WechatMiniprogram.Input) {
@@ -397,7 +403,7 @@ Page({
   },
 
   /**
-   * 一键导入入口。作为界面事件处理器时接收事件对象（读取粘贴文本）；程序化调用（AI 页回流）
+   * 一键导入入口。作为界面事件处理器时接收事件对象（读取粘贴文本）；程序化调用（e2e / 其他页）
    * 时可传字符串数组或 {text, group?, source?} 数组。经 records.questions.importMany 归一化
    * 去重，只写入新问题，返回 {imported, skipped} 并在页面展示可见提示（全部重复时明确提示）。
    */
@@ -420,7 +426,7 @@ Page({
     }
 
     if (items.length === 0) {
-      this.setData({ importHint: copy.importEmpty, importReport: null });
+      this.setData({ importHint: copy.importEmpty });
       if (typeof wx.showToast === 'function') {
         wx.showToast({ title: copy.importEmpty, icon: 'none' });
       }
@@ -441,7 +447,6 @@ Page({
 
     this.setData({
       importHint: hint,
-      importReport: report,
       importText: '',
     });
     this.refresh();

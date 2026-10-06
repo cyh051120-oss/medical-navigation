@@ -67,6 +67,12 @@ const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0
 const BARE_PX = /(?<![\dr])\d+px/;
 const SCALED_FONT = /calc\([^)]*var\(--mhp-scale\)\)/;
 const SCALE_INLINE = /--mhp-scale:\s*\{\{scale\}\}/;
+// Final mechanism (A13 sweep): all 8 page roots also bind the capped layout scale, and every
+// interactive view exposes a role/label; questions + ai decision points carry checkbox state.
+const LAYOUT_SCALE_INLINE = /--mhp-layout-scale:\s*\{\{layoutScale\}\}/;
+const ARIA_ROLE = /aria-role=/;
+const CHECKBOX_SEMANTICS = /aria-role="checkbox"/;
+const ARIA_CHECKED = /aria-checked=/;
 const HC_CLASS_BIND = /is-hc/;
 
 /**
@@ -91,7 +97,10 @@ function staticScan() {
       font_size_lines: fontLines.length,
       font_size_all_scaled: fontAllScaled,
       wxml_scale_inline: SCALE_INLINE.test(wxml),
+      wxml_layout_scale_inline: LAYOUT_SCALE_INLINE.test(wxml),
       wxml_hc_class: HC_CLASS_BIND.test(wxml),
+      wxml_aria_role: ARIA_ROLE.test(wxml),
+      wxml_checkbox_semantics: CHECKBOX_SEMANTICS.test(wxml) && ARIA_CHECKED.test(wxml),
       uses_sync_a11y: /syncA11y\s*\(/.test(ts),
       // settings owns its inline scale; the other 7 pages get it via the shared helper.
       ts_scale_mechanism:
@@ -127,7 +136,12 @@ function staticScan() {
 function summarizeStatics(scan) {
   const allPagesScaled = scan.pages.every((p) => p.font_size_all_scaled === true);
   const allScaleInline = scan.pages.every((p) => p.wxml_scale_inline === true);
+  const allLayoutScaleInline = scan.pages.every((p) => p.wxml_layout_scale_inline === true);
   const allHcClass = scan.pages.every((p) => p.wxml_hc_class === true);
+  const allAria = scan.pages.every((p) => p.wxml_aria_role === true);
+  const checkboxSemantics = ['questions', 'ai'].every(
+    (name) => scan.pages.find((p) => p.name === name)?.wxml_checkbox_semantics === true,
+  );
   const allMechanism = scan.pages.every((p) => p.ts_scale_mechanism === true);
   const helperPagesUseSync = scan.pages
     .filter((p) => p.name !== 'settings')
@@ -138,7 +152,10 @@ function summarizeStatics(scan) {
   return {
     all_pages_scaled: allPagesScaled,
     all_pages_scale_inline: allScaleInline,
+    all_pages_layout_scale_inline: allLayoutScaleInline,
     all_pages_hc_class: allHcClass,
+    all_pages_aria: allAria,
+    checkbox_semantics: checkboxSemantics,
     all_pages_mechanism: allMechanism,
     helper_pages_use_sync: helperPagesUseSync,
     zero_bare_px: barePxTotal === 0,
@@ -248,13 +265,19 @@ function buildFailureTranscript(data) {
   push(`  zero_bare_px (字号与任意属性): ${data.summary.zero_bare_px}`);
   push(`  all_pages_scaled (font-size 均 calc(… * var(--mhp-scale))): ${data.summary.all_pages_scaled}`);
   push(`  all_pages_scale_inline (根节点 --mhp-scale: {{scale}}): ${data.summary.all_pages_scale_inline}`);
+  push(
+    `  all_pages_layout_scale_inline (根节点 --mhp-layout-scale: {{layoutScale}}): ${data.summary.all_pages_layout_scale_inline}`
+  );
+  push(`  all_pages_aria (根节点 aria-role 语义): ${data.summary.all_pages_aria}`);
+  push(`  checkbox_semantics (questions + ai 勾选决策点): ${data.summary.checkbox_semantics}`);
   push(`  all_pages_hc_class (根节点 is-hc): ${data.summary.all_pages_hc_class}`);
   push(`  all_pages_mechanism (onShow -> syncA11y + A11Y_DATA): ${data.summary.all_pages_mechanism}`);
   push('');
   for (const page of data.scan.pages) {
     push(
       `  [${page.name}] font-size lines=${page.font_size_lines}, all_scaled=${page.font_size_all_scaled}, ` +
-        `scale_inline=${page.wxml_scale_inline}, hc_class=${page.wxml_hc_class}, ` +
+        `scale_inline=${page.wxml_scale_inline}, layout_scale=${page.wxml_layout_scale_inline}, ` +
+        `aria=${page.wxml_aria_role}, hc_class=${page.wxml_hc_class}, ` +
         `syncA11y=${page.uses_sync_a11y}, mechanism=${page.ts_scale_mechanism}, bare_px=[${page.bare_px_lines.join(' | ')}]`
     );
   }
@@ -304,6 +327,9 @@ function buildFailureTranscript(data) {
     data.summary.zero_bare_px === true &&
     data.summary.all_pages_scaled === true &&
     data.summary.all_pages_scale_inline === true &&
+    data.summary.all_pages_layout_scale_inline === true &&
+    data.summary.all_pages_aria === true &&
+    data.summary.checkbox_semantics === true &&
     data.summary.all_pages_mechanism === true &&
     data.summary.helper_pages_use_sync === true &&
     data.summary.app_hc_ok === true &&
@@ -336,6 +362,15 @@ async function main() {
   };
   checkStatic('all 8 pages font-size scaled via --mhp-scale', summary.all_pages_scaled);
   checkStatic('all 8 pages root inline --mhp-scale: {{scale}}', summary.all_pages_scale_inline);
+  checkStatic(
+    'all 8 pages root inline --mhp-layout-scale: {{layoutScale}}',
+    summary.all_pages_layout_scale_inline
+  );
+  checkStatic('all 8 pages expose aria-role semantics', summary.all_pages_aria);
+  checkStatic(
+    'questions + ai checkbox decision points carry checkbox semantics',
+    summary.checkbox_semantics
+  );
   checkStatic('all 8 pages root bind is-hc', summary.all_pages_hc_class);
   checkStatic('all 8 pages wire the uniform scale mechanism', summary.all_pages_mechanism);
   checkStatic(

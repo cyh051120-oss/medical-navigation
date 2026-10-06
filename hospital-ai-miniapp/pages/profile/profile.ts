@@ -126,6 +126,13 @@ Page({
   onShow() {
     syncA11y(this);
     syncSidebar(this);
+    if (typeof wx.setNavigationBarColor === 'function') {
+      const hc = this.data.highContrast === true;
+      wx.setNavigationBarColor({
+        frontColor: hc ? '#ffffff' : '#000000',
+        backgroundColor: hc ? '#000000' : '#ffffff',
+      });
+    }
     this.load();
   },
 

@@ -23,7 +23,7 @@ export interface SidebarPage {
 }
 
 /** 读取当前侧栏状态（AppPreferences.sidebarCollapsed）。 */
-export function readSidebar(): SidebarState {
+function readSidebar(): SidebarState {
   return { sidebarCollapsed: records.preferences.get().sidebarCollapsed };
 }
 

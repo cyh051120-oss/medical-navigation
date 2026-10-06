@@ -1,8 +1,10 @@
 /* components/app-sidebar/app-sidebar.wxss — 全局可折叠左侧导航栏。
    样式隔离 isolated：本文件自带图标类（@import icons.wxss）；颜色/间距令牌
    （--bg-card / --color-primary / --text-* / --mhp-space-*）从页面根节点继承，
-   故 .is-hc 高对比会自动生效。宽度与 app.wxss 的 --mhp-sidebar-w 保持一致：
-   展开 248rpx、收起 96rpx，均随 --mhp-scale 缩放。字号全部 calc(Nrpx * var(--mhp-scale))。 */
+   故 .is-hc 高对比会自动生效。宽度与 app.wxss 的 --mhp-sidebar-w 共用同一变量
+   --mhp-layout-scale（a11y.ts 写入页面根节点，上限 1.2）：展开 248rpx、收起 96rpx，
+   布局宽度不再随 --mhp-scale 线性放大；字号仍全部 calc(Nrpx * var(--mhp-scale))。
+   P1-34：收起态仅图标，导航项与开关都带 aria-label；标签允许换行，避免大字档被裁。 */
 
 @import "../../styles/icons.wxss";
 
@@ -14,7 +16,7 @@
   z-index: 50;
   display: flex;
   flex-direction: column;
-  width: calc(248rpx * var(--mhp-scale));
+  width: calc(248rpx * var(--mhp-layout-scale));
   box-sizing: border-box;
   padding: var(--mhp-space-6) 0 var(--mhp-space-5);
   background: var(--bg-card);
@@ -25,7 +27,7 @@
 }
 
 .sb--collapsed {
-  width: calc(96rpx * var(--mhp-scale));
+  width: calc(96rpx * var(--mhp-layout-scale));
 }
 
 /* ----- 品牌区 ----- */
@@ -52,11 +54,12 @@
 }
 
 .sb__brand-text {
+  min-width: 0;
   font-size: calc(28rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-body);
   font-weight: var(--mhp-fw-semibold);
   color: var(--text-title);
-  white-space: nowrap;
+  white-space: normal;
 }
 
 /* ----- 导航项 ----- */
@@ -76,6 +79,10 @@
   margin-bottom: var(--mhp-space-2);
   padding: var(--mhp-space-5) var(--mhp-space-4);
   border-radius: var(--radius-sm);
+}
+
+.sb__item--hover {
+  background: var(--bg-main);
 }
 
 .sb__item.is-active {
@@ -100,10 +107,11 @@
 }
 
 .sb__item-label {
+  min-width: 0;
   font-size: calc(28rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-body);
   color: var(--text-body);
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .sb__item.is-active .sb__item-label {

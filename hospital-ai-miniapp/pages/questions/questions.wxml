@@ -1,13 +1,13 @@
 <!-- pages/questions/questions.wxml — 待问清单（任务 19）。
      无障碍：根节点内联 --mhp-scale 与 is-hc，消费任务 16 的全局缩放/高对比机制。 -->
-<view class="questions app-shell {{highContrast ? 'is-hc' : ''}} {{sidebarCollapsed ? 'is-collapsed' : ''}}" style="--mhp-scale: {{scale}}">
+<view class="questions app-shell {{highContrast ? 'is-hc' : ''}} {{sidebarCollapsed ? 'is-collapsed' : ''}}" style="--mhp-scale: {{scale}}; --mhp-layout-scale: {{layoutScale}}">
   <app-sidebar current="questions" collapsed="{{sidebarCollapsed}}" scale="{{scale}}" bind:toggle="onSidebarToggle" />
   <view class="hero">
     <view class="hero__text">
       <text class="hero__title">{{copy.title}}</text>
       <text class="hero__sub">{{copy.intro}}</text>
     </view>
-    <view class="hero__add" wx:if="{{!formOpen}}" bindtap="onAdd">{{buttons.add}}</view>
+    <view class="hero__add" wx:if="{{!formOpen}}" bindtap="onAdd" aria-role="button" aria-label="{{buttons.add}}">{{buttons.add}}</view>
   </view>
 
   <view class="progress" wx:if="{{hasRecords}}">
@@ -41,7 +41,7 @@
     >
       <view class="picker">{{copy.filterLabel}}：{{filterLabel}}</view>
     </picker>
-    <view class="toolbar__toggle" bindtap="onToggleImport">
+    <view class="toolbar__toggle" bindtap="onToggleImport" aria-role="button" aria-label="{{importOpen ? copy.importToggleClose : copy.importToggleOpen}}">
       {{importOpen ? copy.importToggleClose : copy.importToggleOpen}}
     </view>
   </view>
@@ -71,21 +71,21 @@
       <view class="chips" wx:if="{{groupChips.length}}">
         <text class="field__hint">{{copy.groupQuickHint}}</text>
         <view class="chip chip--pick" wx:for="{{groupChips}}" wx:key="*this">
-          <view class="chip__pick" data-value="{{item}}" bindtap="onImportGroupChipPick">{{item}}</view>
+          <view class="chip__pick" data-value="{{item}}" bindtap="onImportGroupChipPick" aria-role="button" aria-label="{{item}}">{{item}}</view>
         </view>
       </view>
     </view>
     <text class="import__hint" wx:if="{{importHint}}">{{importHint}}</text>
     <view class="import__actions">
-      <view class="btn btn--primary" bindtap="onImportQuestions">{{copy.importAction}}</view>
-      <view class="btn btn--ghost" bindtap="onToggleImport">{{buttons.cancel}}</view>
+      <view class="btn btn--primary" bindtap="onImportQuestions" aria-role="button" aria-label="{{copy.importAction}}">{{copy.importAction}}</view>
+      <view class="btn btn--ghost" bindtap="onToggleImport" aria-role="button" aria-label="{{buttons.cancel}}">{{buttons.cancel}}</view>
     </view>
   </view>
 
   <view class="editor" wx:if="{{formOpen}}">
     <view class="editor__head">
       <text class="editor__title">{{editingId ? copy.editTitle : copy.addTitle}}</text>
-      <view class="editor__close" bindtap="onCancelForm">{{buttons.cancel}}</view>
+      <view class="editor__close" bindtap="onCancelForm" aria-role="button" aria-label="{{buttons.cancel}}">{{buttons.cancel}}</view>
     </view>
 
     <view class="field">
@@ -111,7 +111,7 @@
       <view class="chips" wx:if="{{groupChips.length}}">
         <text class="field__hint">{{copy.groupQuickHint}}</text>
         <view class="chip chip--pick" wx:for="{{groupChips}}" wx:key="*this">
-          <view class="chip__pick" data-value="{{item}}" bindtap="onGroupChipPick">{{item}}</view>
+          <view class="chip__pick" data-value="{{item}}" bindtap="onGroupChipPick" aria-role="button" aria-label="{{item}}">{{item}}</view>
         </view>
       </view>
     </view>
@@ -119,8 +119,8 @@
     <text class="mhp-error" wx:if="{{errorText}}">{{errorText}}</text>
 
     <view class="editor__actions">
-      <view class="btn btn--primary" bindtap="onSave">{{buttons.save}}</view>
-      <view class="btn btn--ghost" bindtap="onCancelForm">{{buttons.cancel}}</view>
+      <view class="btn btn--primary" bindtap="onSave" aria-role="button" aria-label="{{buttons.save}}">{{buttons.save}}</view>
+      <view class="btn btn--ghost" bindtap="onCancelForm" aria-role="button" aria-label="{{buttons.cancel}}">{{buttons.cancel}}</view>
     </view>
   </view>
 
@@ -131,6 +131,9 @@
           class="q__check {{item.done ? 'is-done' : ''}}"
           data-id="{{item.id}}"
           bindtap="onToggleDone"
+          aria-role="checkbox"
+          aria-checked="{{item.done}}"
+          aria-label="{{item.text}}"
         ></view>
         <view class="q__body">
           <text class="q__text">{{item.text}}</text>
@@ -145,8 +148,8 @@
         <text class="q__stamp-item">{{copy.updatedAtPrefix}} {{item.updatedLabel}}</text>
       </view>
       <view class="q__actions">
-        <view class="btn btn--ghost" data-id="{{item.id}}" bindtap="onEdit">{{buttons.edit}}</view>
-        <view class="btn btn--danger" data-id="{{item.id}}" bindtap="onDelete">{{buttons.delete}}</view>
+        <view class="btn btn--ghost" data-id="{{item.id}}" bindtap="onEdit" aria-role="button" aria-label="{{buttons.edit}}">{{buttons.edit}}</view>
+        <view class="btn btn--danger" data-id="{{item.id}}" bindtap="onDelete" aria-role="button" aria-label="删除这个问题">{{buttons.delete}}</view>
       </view>
     </view>
   </view>
@@ -154,6 +157,6 @@
   <view class="mhp-empty" wx:else>
     <view class="mhp-empty__badge"><view class="mhp-ico mhp-ico--message-circle-question"></view></view>
     <text class="mhp-empty__text">{{emptyText}}</text>
-    <view class="btn btn--primary mhp-empty__action" bindtap="onAdd">{{buttons.add}}</view>
+    <view class="btn btn--primary mhp-empty__action" bindtap="onAdd" aria-role="button" aria-label="{{buttons.add}}">{{buttons.add}}</view>
   </view>
 </view>

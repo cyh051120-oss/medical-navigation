@@ -55,10 +55,10 @@
   display: block;
 }
 
-/* caption tier */
+/* caption tier；最小列宽随字号缩放，避免「性别（可选）」在大字档溢出被挤扁同行控件 */
 .field__label {
   flex: none;
-  width: 150rpx;
+  min-width: calc(150rpx * var(--mhp-scale));
   font-size: calc(24rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-caption);
   color: var(--text-caption);
@@ -67,14 +67,15 @@
 .field--block .field__label {
   display: block;
   width: auto;
+  min-width: 0;
   margin-bottom: var(--mhp-space-4);
 }
 
-/* body tier */
+/* body tier；高度随字号缩放，避免固定高度在大字档裁切输入内容与光标 */
 .field__input {
   flex: 1;
   min-width: 0;
-  height: 64rpx;
+  min-height: calc(64rpx * var(--mhp-scale));
   font-size: calc(28rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-body);
   color: var(--text-body);
@@ -82,6 +83,9 @@
 
 .field__picker {
   flex: 1;
+  display: flex;
+  align-items: center;
+  min-height: 88rpx;
   padding: var(--mhp-space-4) var(--mhp-space-6);
   border-radius: var(--radius-sm);
   font-size: calc(28rpx * var(--mhp-scale));
@@ -102,6 +106,10 @@
 
 .gender__btn {
   flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 88rpx;
   padding: var(--mhp-space-4) 0;
   border-radius: var(--radius-sm);
   text-align: center;

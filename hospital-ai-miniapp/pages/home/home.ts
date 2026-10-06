@@ -192,6 +192,13 @@ Page({
   onShow() {
     syncA11y(this);
     syncSidebar(this);
+    if (typeof wx.setNavigationBarColor === 'function') {
+      const hc = this.data.highContrast === true;
+      wx.setNavigationBarColor({
+        frontColor: hc ? '#ffffff' : '#000000',
+        backgroundColor: hc ? '#000000' : '#ffffff',
+      });
+    }
     this.refresh();
   },
 
@@ -229,14 +236,8 @@ Page({
     wx.navigateTo({ url: '/pages/profile/profile' });
   },
 
+  /** 记录概览卡与最近记录行共用：按 data-route 跳转。 */
   onEntryTap(event: WechatMiniprogram.TouchEvent) {
-    const route = event.currentTarget.dataset.route;
-    if (typeof route === 'string' && route !== '') {
-      wx.navigateTo({ url: '/' + route });
-    }
-  },
-
-  onRecordTap(event: WechatMiniprogram.TouchEvent) {
     const route = event.currentTarget.dataset.route;
     if (typeof route === 'string' && route !== '') {
       wx.navigateTo({ url: '/' + route });

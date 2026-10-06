@@ -5,7 +5,7 @@
 //   - 组件只负责展示与派发：收起/展开通过 triggerEvent('toggle') 交由页面落盘
 //     （页面调用 shared/ui/sidebar.setSidebarCollapsed），组件自身不读写存储。
 //   - 固定定位（position: fixed）；页面根节点加 `app-shell` 后由 app.wxss 用
-//     margin-left: var(--mhp-sidebar-w) 为侧栏让位，两者宽度保持一致。
+//     margin-left: var(--mhp-sidebar-w) 为侧栏让位，两者宽度共用 --mhp-layout-scale。
 //   - 样式隔离 isolated：仅本组件 wxss 生效；但 CSS 自定义属性（颜色/间距令牌）
 //     仍从页面根节点继承，故高对比 .is-hc 会自动作用于侧栏。--mhp-scale 另由
 //     `scale` 属性显式写入组件根节点，保证图标与文字随全局字号缩放。
@@ -46,6 +46,15 @@ Component({
       if (typeof route !== 'string' || route === '') return;
       if (typeof key === 'string' && key === this.data.current) return;
       wx.reLaunch({ url: '/' + route });
+    },
+
+    /** 收起态长按：以 toast 显示导航项名称，作为触摸端 tooltip（读屏另有 aria-label）。 */
+    onItemLongPress(event: WechatMiniprogram.TouchEvent) {
+      const label = event.currentTarget.dataset.label;
+      if (typeof label !== 'string' || label === '') return;
+      if (typeof wx.showToast === 'function') {
+        wx.showToast({ title: label, icon: 'none' });
+      }
     },
   },
 });

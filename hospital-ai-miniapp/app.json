@@ -14,9 +14,10 @@
     "navigationBarBackgroundColor": "#FFFFFF",
     "navigationBarTitleText": "就医准备助手",
     "navigationBarTextStyle": "black",
-    "backgroundColor": "#F7F8FA"
+    "backgroundColor": "#F4F6F9"
   },
   "style": "v2",
+  "__usePrivacyCheck__": true,
   "usingComponents": {
     "app-sidebar": "/components/app-sidebar/app-sidebar"
   },

@@ -1,24 +1,7 @@
 {
   "description": "项目配置文件",
   "packOptions": {
-    "ignore": [
-      {
-        "value": ".mp4",
-        "type": "suffix"
-      },
-      {
-        "value": ".pptx",
-        "type": "suffix"
-      },
-      {
-        "value": ".docx",
-        "type": "suffix"
-      },
-      {
-        "value": ".pdf",
-        "type": "suffix"
-      }
-    ],
+    "ignore": [],
     "include": []
   },
   "setting": {

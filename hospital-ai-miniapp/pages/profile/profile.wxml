@@ -1,6 +1,6 @@
 <!-- pages/profile/profile.wxml — 最小个人档案（任务 14）。
      任务 16：根节点内联 --mhp-scale（shared/ui/a11y.ts 写入），高对比加 is-hc。 -->
-<view class="profile app-shell {{highContrast ? 'is-hc' : ''}} {{sidebarCollapsed ? 'is-collapsed' : ''}}" style="--mhp-scale: {{scale}}">
+<view class="profile app-shell {{highContrast ? 'is-hc' : ''}} {{sidebarCollapsed ? 'is-collapsed' : ''}}" style="--mhp-scale: {{scale}}; --mhp-layout-scale: {{layoutScale}}">
   <app-sidebar current="profile" collapsed="{{sidebarCollapsed}}" scale="{{scale}}" bind:toggle="onSidebarToggle" />
   <view class="profile-hero">
     <text class="profile-hero__title">个人档案</text>
@@ -38,6 +38,9 @@
           class="gender__btn {{form.gender === item.value ? 'is-active' : ''}}"
           data-value="{{item.value}}"
           bindtap="setGender"
+          aria-role="radio"
+          aria-checked="{{form.gender === item.value}}"
+          aria-label="{{item.label}}"
         >
           {{item.label}}
         </view>
@@ -91,8 +94,8 @@
   </view>
 
   <view class="profile-actions">
-    <view class="btn btn--primary" bindtap="onSave">{{saveText}}</view>
-    <view class="btn btn--danger" wx:if="{{hasRecord}}" bindtap="onClear">{{clearText}}</view>
+    <view class="btn btn--primary" bindtap="onSave" aria-role="button" aria-label="{{saveText}}">{{saveText}}</view>
+    <view class="btn btn--danger" wx:if="{{hasRecord}}" bindtap="onClear" aria-role="button" aria-label="{{clearText}}">{{clearText}}</view>
   </view>
 
   <view class="profile-meta" wx:if="{{hasRecord}}">

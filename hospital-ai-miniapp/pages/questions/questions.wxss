@@ -43,6 +43,10 @@
 /* body tier */
 .hero__add {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 88rpx;
   padding: var(--mhp-space-4) var(--mhp-space-8);
   border-radius: var(--radius-xl);
   font-size: calc(28rpx * var(--mhp-scale));
@@ -137,6 +141,9 @@
 }
 
 .chip__pick {
+  display: inline-flex;
+  align-items: center;
+  min-height: 88rpx;
   padding: var(--mhp-space-3) var(--mhp-space-5);
   border-radius: var(--radius-xl);
   font-size: calc(24rpx * var(--mhp-scale));
@@ -163,6 +170,9 @@
 /* caption tier */
 .toolbar__toggle {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 88rpx;
   padding: var(--mhp-space-4) var(--mhp-space-7);
   border-radius: var(--radius-md);
   font-size: calc(24rpx * var(--mhp-scale));
@@ -260,7 +270,10 @@
 /* caption tier */
 .editor__close {
   flex: none;
-  padding: var(--mhp-space-2) var(--mhp-space-4);
+  display: inline-flex;
+  align-items: center;
+  min-height: 88rpx;
+  padding: 0 var(--mhp-space-4);
   font-size: calc(24rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-caption);
   color: var(--text-caption);
@@ -343,19 +356,31 @@
   gap: var(--mhp-space-5);
 }
 
+/* A13-03：命中区 88rpx（44 物理像素基线，WCAG 2.5.5），视觉方框仍 44rpx 由 ::before 绘制，
+   只放大可点区域不放大图形。 */
 .q__check {
   position: relative;
   flex: none;
+  box-sizing: border-box;
+  width: 88rpx;
+  height: 88rpx;
+  margin-left: -22rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.q__check::before {
+  content: '';
+  box-sizing: border-box;
   width: 44rpx;
   height: 44rpx;
-  box-sizing: border-box;
-  margin-top: var(--mhp-space-1);
   border: 3rpx solid var(--text-caption);
   border-radius: var(--radius-xs);
   transition: background-color var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard);
 }
 
-.q__check.is-done {
+.q__check.is-done::before {
   border-color: var(--color-primary);
   background: var(--color-primary);
 }
@@ -363,8 +388,8 @@
 .q__check.is-done::after {
   content: '';
   position: absolute;
-  left: 13rpx;
-  top: 6rpx;
+  left: 35rpx;
+  top: 28rpx;
   width: 12rpx;
   height: 22rpx;
   border-right: 4rpx solid var(--bg-card);
@@ -442,6 +467,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-height: 88rpx;
   padding: var(--mhp-space-5) var(--mhp-space-8);
   border-radius: var(--radius-md);
   text-align: center;
