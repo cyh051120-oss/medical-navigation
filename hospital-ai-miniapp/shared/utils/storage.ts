@@ -9,20 +9,32 @@ const META_SCHEMA_VERSION = 'schema_version';
 
 type StorageValue = unknown;
 
-/** Return all storage keys from the runtime. */
+/**
+ * Return all storage keys from the runtime, letting enumeration failures
+ * propagate. Used by destructive paths (clearAll / purgeLegacy) so a failed
+ * enumeration can never be reported as a successful wipe (P1-18).
+ */
+function allKeysStrict(): string[] {
+  const info = wx.getStorageInfoSync();
+  return info && Array.isArray(info.keys) ? info.keys : [];
+}
+
+/** Read-only key listing: enumeration failures degrade to an empty list. */
 function allKeys(): string[] {
   try {
-    const info = wx.getStorageInfoSync();
-    return Array.isArray(info.keys) ? info.keys : [];
+    return allKeysStrict();
   } catch (e) {
     return [];
   }
 }
 
-/** Remove every key matching the given prefix; returns removed count. */
+/**
+ * Remove every key matching the given prefix; returns removed count.
+ * Enumeration/removal failures propagate (never silently reported as cleared).
+ */
 function removeByPrefix(prefix: string): number {
   let removed = 0;
-  for (const key of allKeys()) {
+  for (const key of allKeysStrict()) {
     if (key.indexOf(prefix) === 0) {
       wx.removeStorageSync(key);
       removed += 1;
@@ -38,6 +50,16 @@ export function get<T = StorageValue>(key: string, defaultVal: T | null = null):
   } catch (e) {
     return defaultVal;
   }
+}
+
+/**
+ * Like `get`, but lets read exceptions propagate. Required for read-modify-write
+ * paths: a swallowed read failure would be mistaken for an empty entity and
+ * overwrite the real records on the next write (P1-17).
+ */
+export function getStrict<T = StorageValue>(key: string, defaultVal: T | null = null): T | null {
+  const val = wx.getStorageSync(NS + key);
+  return val !== '' && val !== undefined ? (val as T) : defaultVal;
 }
 
 export function set(key: string, val: StorageValue): void {

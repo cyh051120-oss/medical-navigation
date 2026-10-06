@@ -2,25 +2,20 @@
 //
 // 单一职责：在本机记录、编辑、删除资料摘录，并按来源日期倒序展示。
 // 字段严格等于 records.DocumentNote：名称 name / 摘录 excerpt / 来源日期 sourceDate /
-//   单附件 attachment（≤1，string|null）/ 备注 remark。不新增任何判断类字段，界面亦不
-//   出现此类文案；附件仅本地保存与展示，不做任何判读。
+//   单附件 attachment（≤1，string|null）/ 备注 remark。不新增任何判断类字段，界面亦
+//   不出现此类文案；附件仅本地保存与展示，不做任何判读。
 //
 // 具体行为：
 //   - 列表：records.notes.list() 后按来源日期 sourceDate 倒序（同日按 id 升序稳定）。
-//     每行展示：名称 / 摘录 / 来源日期 / 备注 / 附件指示（含缺失占位）/ 创建与更新时间戳。
-//   - 附件预览：附件可读时经 wx.previewImage（宿主提供时）预览；附件文件缺失或不可读时以
-//     占位提示「附件缺失，无法预览」呈现，且绝不抛错（见 attachmentIsReadable 的守卫）。
+//   - 附件预览：附件可读时经 wx.previewImage 预览；缺失或不可读时只给占位提示，绝不抛错。
 //   - 表单：新增与编辑共用；来源日期用日期选择器，新增默认当天。编辑时载入原值。
 //   - 校验：名称 trim() 后为空时给出提示且不写入任何存储。
 //   - 删除：确认后经 attachments.deleteRecordWithAttachment 删除记录并同步删附件。
 //   - 附件：最多 1 个。新增经 attachments.addWithAttachment；编辑选新附件时经
-//     attachments.replaceAttachment（替换即先删旧文件）。attachments 层没有「仅解绑单个附件」
-//     原语，故本页不提供单独移除入口，也不自造影子存储或手写存储键（与任务 17 同决策）。
+//     attachments.replaceAttachment（先存新文件、成功后才删旧文件）。两条路径都消费返回的
+//     notice/warning 并给出条件反馈，不再无条件谎报成功。
 //   - 无障碍（任务 16 契约）：data 展开 A11Y_DATA，onShow 调 syncA11y，根节点消费
 //     `--mhp-scale` 与 `is-hc`。
-//
-// 数据层：只经 records.notes 与 attachments（均纯本地，无网络）；不直接调用 storage，
-//   也不自建键。所有写入走整对象 setData，便于 node 端页面逻辑检查驱动真实方法。
 
 import { BUTTONS, EMPTY, NOTES } from '../../config/texts';
 import { A11Y_DATA, syncA11y } from '../../shared/ui/a11y';
@@ -31,6 +26,7 @@ import {
   deleteRecordWithAttachment,
   replaceAttachment,
 } from '../../shared/services/attachments';
+import { formatStamp } from '../../shared/utils/time';
 import type { DocumentNote, DocumentNoteInput } from '../../shared/services/records';
 
 /** 表单字段；来源日期为 `YYYY-MM-DD`。 */
@@ -65,16 +61,6 @@ function pad2(value: number): string {
 function baseName(filePath: string): string {
   const slash = filePath.lastIndexOf('/');
   return slash === -1 ? filePath : filePath.slice(slash + 1);
-}
-
-/** ISO -> `YYYY-MM-DD HH:mm`（本地）；无法解析时返回空串（不伪造时间）。 */
-function formatStamp(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '';
-  return (
-    `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ` +
-    `${pad2(date.getHours())}:${pad2(date.getMinutes())}`
-  );
 }
 
 /** 当前本地日期 `YYYY-MM-DD`（新增时的来源日期默认值）。 */
@@ -136,6 +122,7 @@ Page({
     existingAttachment: '',
     attachmentName: '',
     existingAttachmentMissing: false,
+    picking: false,
     previewPath: '',
     previewHint: '',
     errorText: '',
@@ -147,6 +134,13 @@ Page({
   onShow() {
     syncA11y(this);
     syncSidebar(this);
+    if (typeof wx.setNavigationBarColor === 'function') {
+      const hc = this.data.highContrast === true;
+      wx.setNavigationBarColor({
+        frontColor: hc ? '#ffffff' : '#000000',
+        backgroundColor: hc ? '#000000' : '#ffffff',
+      });
+    }
     this.refresh();
   },
 
@@ -157,7 +151,12 @@ Page({
 
   /** 重新读取本地资料摘录并刷新列表（返回本页时也会触发）。 */
   refresh() {
-    const rows = buildRows(records.notes.list());
+    let rows: NoteRow[] = [];
+    try {
+      rows = buildRows(records.notes.list());
+    } catch (e) {
+      rows = [];
+    }
     this.setData({ rows, hasRecords: rows.length > 0 });
   },
 
@@ -172,6 +171,7 @@ Page({
       existingAttachment: '',
       attachmentName: '',
       existingAttachmentMissing: false,
+      picking: false,
       previewPath: '',
       previewHint: '',
       errorText: '',
@@ -197,6 +197,7 @@ Page({
       existingAttachment: attachment,
       attachmentName: attachment === '' ? '' : baseName(attachment),
       existingAttachmentMissing: attachment === '' ? false : !attachmentIsReadable(attachment),
+      picking: false,
       previewPath: '',
       previewHint: '',
       errorText: '',
@@ -205,6 +206,10 @@ Page({
   },
 
   onCancelForm() {
+    this.closeForm();
+  },
+
+  closeForm() {
     this.setData({
       formOpen: false,
       editingId: '',
@@ -213,6 +218,7 @@ Page({
       existingAttachment: '',
       attachmentName: '',
       existingAttachmentMissing: false,
+      picking: false,
       previewPath: '',
       previewHint: '',
       errorText: '',
@@ -235,9 +241,11 @@ Page({
     this.setData({ form: { ...this.data.form, remark: event.detail.value }, errorText: '' });
   },
 
-  /** 选择 1 个附件（图片）：仅记录临时路径，保存时才落盘。 */
+  /** 选择 1 个附件（图片）：仅记录临时路径，保存时才落盘；失败/结束都有可见反馈。 */
   onPickAttachment() {
     if (typeof wx.chooseMedia !== 'function') return;
+    if (this.data.picking) return;
+    this.setData({ picking: true });
     wx.chooseMedia({
       count: 1,
       mediaType: ['image'],
@@ -249,7 +257,25 @@ Page({
           this.setData({ pendingAttachment: temp, attachmentName: baseName(temp) });
         }
       },
+      fail: () => {
+        this.setData({ errorText: this.data.copy.attachmentPickFailed });
+        if (typeof wx.showToast === 'function') {
+          wx.showToast({ title: this.data.copy.attachmentPickFailed, icon: 'none' });
+        }
+      },
+      complete: () => {
+        this.setData({ picking: false });
+      },
     });
+  },
+
+  notify(title: string, icon: 'none' | 'success') {
+    if (typeof wx.showToast === 'function') wx.showToast({ title, icon });
+  },
+
+  feedback(warning: string | undefined, successTitle: string) {
+    if (warning === undefined) this.notify(successTitle, 'success');
+    else this.notify(warning, 'none');
   },
 
   /**
@@ -263,9 +289,7 @@ Page({
     if (row === undefined || !row.hasAttachment) return;
     if (row.attachmentMissing) {
       this.setData({ previewPath: '', previewHint: this.data.copy.attachmentMissing });
-      if (typeof wx.showToast === 'function') {
-        wx.showToast({ title: this.data.copy.attachmentMissing, icon: 'none' });
-      }
+      this.notify(this.data.copy.attachmentMissing, 'none');
       return;
     }
     this.setData({ previewPath: row.attachment, previewHint: '' });
@@ -275,17 +299,17 @@ Page({
   },
 
   /**
-   * 保存：名称 trim 后为空 -> 提示且不写入。编辑走 update（更换附件时另经
-   * replaceAttachment），新增走 addWithAttachment。成功后刷新列表并关闭表单。
+   * 保存：名称 trim 后为空 -> 提示且不写入。编辑选新附件时经 replaceAttachment
+   * （先存新、成功后删旧），失败则整体不改并给出明确提示。新增经 addWithAttachment，
+   * 附件失败仍会写入记录，但明确告知「记录已保存，但附件未保存」。
    */
   onSave() {
     const form = this.data.form;
+    const copy = this.data.copy;
     const name = form.name.trim();
     if (name === '') {
-      this.setData({ errorText: this.data.copy.requiredHint });
-      if (typeof wx.showToast === 'function') {
-        wx.showToast({ title: this.data.copy.requiredHint, icon: 'none' });
-      }
+      this.setData({ errorText: copy.requiredHint });
+      this.notify(copy.requiredHint, 'none');
       return;
     }
 
@@ -293,50 +317,56 @@ Page({
     const sourceDate = form.sourceDate;
     const remark = form.remark.trim();
 
-    if (this.data.editingId !== '') {
-      const id = this.data.editingId;
-      const patch: Partial<DocumentNoteInput> = { name, excerpt, sourceDate, remark };
-      if (this.data.pendingAttachment !== '') {
-        records.notes.update(id, patch);
-        replaceAttachment(records.notes, id, this.data.pendingAttachment);
+    try {
+      if (this.data.editingId !== '') {
+        const id = this.data.editingId;
+        const patch: Partial<DocumentNoteInput> = { name, excerpt, sourceDate, remark };
+        if (this.data.pendingAttachment !== '') {
+          const replaced = replaceAttachment(records.notes, id, this.data.pendingAttachment);
+          if (!replaced.saved) {
+            const reason = replaced.notice === undefined ? '' : `（${replaced.notice}）`;
+            const message = `${copy.attachmentReplaceFailed}${reason}`;
+            this.setData({ errorText: message });
+            this.notify(message, 'none');
+            return;
+          }
+          records.notes.update(id, patch);
+          this.feedback(replaced.warning, copy.savedHint);
+        } else {
+          records.notes.update(id, {
+            ...patch,
+            attachment: this.data.existingAttachment === '' ? null : this.data.existingAttachment,
+          });
+          this.feedback(undefined, copy.savedHint);
+        }
       } else {
-        records.notes.update(id, {
-          ...patch,
-          attachment: this.data.existingAttachment === '' ? null : this.data.existingAttachment,
-        });
+        const input: DocumentNoteInput = {
+          name,
+          excerpt,
+          sourceDate,
+          remark,
+          attachment: null,
+        };
+        const result = addWithAttachment(
+          records.notes,
+          input,
+          this.data.pendingAttachment === '' ? null : this.data.pendingAttachment
+        );
+        if (result.notice !== undefined) {
+          this.notify(`${copy.attachmentNotSaved}（${result.notice}）`, 'none');
+        } else {
+          this.feedback(result.warning, copy.savedHint);
+        }
       }
-    } else {
-      const input: DocumentNoteInput = {
-        name,
-        excerpt,
-        sourceDate,
-        remark,
-        attachment: null,
-      };
-      addWithAttachment(
-        records.notes,
-        input,
-        this.data.pendingAttachment === '' ? null : this.data.pendingAttachment
-      );
+    } catch (e) {
+      this.setData({ errorText: copy.saveFailed });
+      this.notify(copy.saveFailed, 'none');
+      return;
     }
 
-    this.setData({
-      formOpen: false,
-      editingId: '',
-      form: { ...EMPTY_FORM },
-      pendingAttachment: '',
-      existingAttachment: '',
-      attachmentName: '',
-      existingAttachmentMissing: false,
-      previewPath: '',
-      previewHint: '',
-      errorText: '',
-    });
+    this.closeForm();
     this.refresh();
     if (typeof wx.vibrateShort === 'function') wx.vibrateShort({ type: 'light' });
-    if (typeof wx.showToast === 'function') {
-      wx.showToast({ title: this.data.copy.savedHint, icon: 'success' });
-    }
   },
 
   /** 删除：确认后删除记录并同步删除其附件。 */
@@ -344,25 +374,15 @@ Page({
     const id = event.currentTarget.dataset.id;
     if (typeof id !== 'string' || id === '') return;
     const doDelete = () => {
-      deleteRecordWithAttachment(records.notes, id);
-      if (this.data.editingId === id) {
-        this.setData({
-          formOpen: false,
-          editingId: '',
-          form: { ...EMPTY_FORM },
-          pendingAttachment: '',
-          existingAttachment: '',
-          attachmentName: '',
-          existingAttachmentMissing: false,
-          previewPath: '',
-          previewHint: '',
-          errorText: '',
-        });
+      try {
+        deleteRecordWithAttachment(records.notes, id);
+      } catch (e) {
+        this.notify(this.data.copy.deleteFailed, 'none');
+        return;
       }
+      if (this.data.editingId === id) this.closeForm();
       this.refresh();
-      if (typeof wx.showToast === 'function') {
-        wx.showToast({ title: this.data.copy.deletedHint, icon: 'none' });
-      }
+      this.notify(this.data.copy.deletedHint, 'none');
     };
 
     if (typeof wx.showModal === 'function') {

@@ -17,7 +17,7 @@
  *   年龄段：<ageRange>
  *
  *   【症状时间线】
- *   <occurredAt> <text>（持续 <duration>；影响 <impact>；标签 <t1、t2>）
+ *   <发生时间> <text>（持续 <duration>；影响 <impact>；标签 <t1、t2>）
  *
  *   【用药】
  *   长期用药：<medications>
@@ -36,7 +36,8 @@
  * 细则：
  *   - 行内附加信息（持续 / 影响 / 标签 / 来源日期 / 备注）仅在字段非空时出现；
  *     字段为空时不渲染该段，不写占位符。
- *   - 症状按 `occurredAt` 升序，同一时间点保持输入顺序（稳定）。
+ *   - 症状按 `occurredAt`（UTC+8 本地化显示）升序；不可解析时回退 `createdAt`，
+ *     再不行回退 0；同键保持输入顺序（稳定）。
  *   - 待问问题保持输入顺序，逐条带上完成状态（`[x]` 已完成 / `[ ]` 未完成）。
  *   - `sourceIds` 为实际渲染用到的记录 id，按小节出现顺序去重。
  *   - 空选择：`text` 为 `EMPTY.brief`，`sections` 与 `sourceIds` 均为空数组。
@@ -44,6 +45,7 @@
 
 import type { DocumentNote, LocalProfile, QuestionList, SymptomEntry } from './records';
 import { EMPTY } from '../../config/texts';
+import { formatStamp } from '../utils/time';
 
 /** 组装所用的记录选择；每个字段都可缺省。 */
 export interface BriefSelection {
@@ -85,6 +87,14 @@ function isFilled(value: string): boolean {
   return typeof value === 'string' && value.trim() !== '';
 }
 
+/** 排序键：优先 occurredAt，不可解析时回退 createdAt，再不行回退 0（确定性）。 */
+function symptomSortMs(symptom: SymptomEntry): number {
+  const occurred = Date.parse(symptom.occurredAt);
+  if (Number.isFinite(occurred)) return occurred;
+  const created = Date.parse(symptom.createdAt);
+  return Number.isFinite(created) ? created : 0;
+}
+
 /** 症状行：保留用户原话逐字不变，附加信息按需追加。 */
 function symptomLine(symptom: SymptomEntry): string {
   const extras: string[] = [];
@@ -92,7 +102,10 @@ function symptomLine(symptom: SymptomEntry): string {
   if (isFilled(symptom.impact)) extras.push(`影响 ${symptom.impact}`);
   const tags = symptom.tags.filter((tag) => isFilled(tag));
   if (tags.length > 0) extras.push(`标签 ${tags.join('、')}`);
-  const head = isFilled(symptom.occurredAt) ? `${symptom.occurredAt} ${symptom.text}` : symptom.text;
+  const stamp = formatStamp(symptom.occurredAt);
+  const rawText = isFilled(symptom.occurredAtText ?? '') ? (symptom.occurredAtText as string) : '';
+  const when = stamp !== '' ? stamp : rawText;
+  const head = when !== '' ? `${when} ${symptom.text}` : symptom.text;
   return extras.length > 0 ? `${head}（${extras.join('；')}）` : head;
 }
 
@@ -158,14 +171,11 @@ export function build(selection: BriefSelection): BriefBuildResult {
     }
   }
 
-  // 2. 症状时间线（occurredAt 升序，同刻保持输入顺序）
+  // 2. 症状时间线（occurredAt 升序；不可解析回退 createdAt；同键保持输入顺序）
   const orderedSymptoms = symptoms
-    .map((symptom, index) => ({ symptom, index }))
+    .map((symptom, index) => ({ symptom, index, sortMs: symptomSortMs(symptom) }))
     .sort((a, b) => {
-      const left = a.symptom.occurredAt;
-      const right = b.symptom.occurredAt;
-      if (left < right) return -1;
-      if (left > right) return 1;
+      if (a.sortMs !== b.sortMs) return a.sortMs - b.sortMs;
       return a.index - b.index;
     })
     .map((entry) => entry.symptom)

@@ -1,19 +1,19 @@
 <!-- pages/symptoms/symptoms.wxml — 症状时间线（任务 17）。
      无障碍：根节点内联 --mhp-scale 与 is-hc，消费任务 16 的全局缩放/高对比机制。 -->
-<view class="symptoms app-shell {{highContrast ? 'is-hc' : ''}} {{sidebarCollapsed ? 'is-collapsed' : ''}}" style="--mhp-scale: {{scale}}">
+<view class="symptoms app-shell {{highContrast ? 'is-hc' : ''}} {{sidebarCollapsed ? 'is-collapsed' : ''}}" style="--mhp-scale: {{scale}}; --mhp-layout-scale: {{layoutScale}}">
   <app-sidebar current="symptoms" collapsed="{{sidebarCollapsed}}" scale="{{scale}}" bind:toggle="onSidebarToggle" />
   <view class="hero">
     <view class="hero__text">
       <text class="hero__title">{{copy.title}}</text>
       <text class="hero__sub">{{copy.intro}}</text>
     </view>
-    <view class="hero__add" wx:if="{{!formOpen}}" bindtap="onAdd">{{buttons.add}}</view>
+    <view class="hero__add" wx:if="{{!formOpen}}" bindtap="onAdd" aria-role="button" aria-label="{{buttons.add}}">{{buttons.add}}</view>
   </view>
 
   <view class="editor" wx:if="{{formOpen}}">
     <view class="editor__head">
       <text class="editor__title">{{editingId ? copy.editTitle : copy.addTitle}}</text>
-      <view class="editor__close" bindtap="onCancelForm">{{buttons.cancel}}</view>
+      <view class="editor__close" bindtap="onCancelForm" aria-role="button" aria-label="{{buttons.cancel}}">{{buttons.cancel}}</view>
     </view>
 
     <view class="field">
@@ -77,7 +77,7 @@
       <view class="attach" wx:if="{{attachmentName}}">
         <text class="attach__name">{{attachmentName}}</text>
       </view>
-      <view class="btn btn--ghost" bindtap="onPickAttachment">
+      <view class="btn btn--ghost" bindtap="onPickAttachment" aria-role="button" aria-label="{{attachmentName ? copy.replaceAttachment : copy.pickAttachment}}">
         {{attachmentName ? copy.replaceAttachment : copy.pickAttachment}}
       </view>
       <text class="field__hint">{{copy.attachmentHint}}</text>
@@ -86,8 +86,8 @@
     <text class="mhp-error" wx:if="{{errorText}}">{{errorText}}</text>
 
     <view class="editor__actions">
-      <view class="btn btn--primary" bindtap="onSave">{{buttons.save}}</view>
-      <view class="btn btn--ghost" bindtap="onCancelForm">{{buttons.cancel}}</view>
+      <view class="btn btn--primary" bindtap="onSave" aria-role="button" aria-label="{{buttons.save}}">{{buttons.save}}</view>
+      <view class="btn btn--ghost" bindtap="onCancelForm" aria-role="button" aria-label="{{buttons.cancel}}">{{buttons.cancel}}</view>
     </view>
   </view>
 
@@ -116,8 +116,8 @@
           <text class="tl-card__stamp-item">{{copy.updatedAtPrefix}} {{item.updatedLabel}}</text>
         </view>
         <view class="tl-card__actions">
-          <view class="btn btn--ghost" data-id="{{item.id}}" bindtap="onEdit">{{buttons.edit}}</view>
-          <view class="btn btn--danger" data-id="{{item.id}}" bindtap="onDelete">{{buttons.delete}}</view>
+          <view class="btn btn--ghost" data-id="{{item.id}}" bindtap="onEdit" aria-role="button" aria-label="{{buttons.edit}}">{{buttons.edit}}</view>
+          <view class="btn btn--danger" data-id="{{item.id}}" bindtap="onDelete" aria-role="button" aria-label="删除这条症状记录">{{buttons.delete}}</view>
         </view>
       </view>
     </view>
@@ -126,6 +126,6 @@
   <view class="mhp-empty" wx:else>
     <view class="mhp-empty__badge"><view class="mhp-ico mhp-ico--stethoscope"></view></view>
     <text class="mhp-empty__text">{{emptyText}}</text>
-    <view class="btn btn--primary mhp-empty__action" bindtap="onAdd">{{buttons.add}}</view>
+    <view class="btn btn--primary mhp-empty__action" bindtap="onAdd" aria-role="button" aria-label="{{buttons.add}}">{{buttons.add}}</view>
   </view>
 </view>

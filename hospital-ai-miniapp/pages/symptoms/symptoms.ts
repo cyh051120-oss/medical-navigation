@@ -1,24 +1,23 @@
 // pages/symptoms/symptoms.ts — 症状时间线（任务 17）。
 //
 // 单一职责：在本机记录、编辑、删除症状条目，并按发生时间倒序展示。
-// 字段严格等于 records.SymptomEntry：发生时间 occurredAt（ISO）/ 持续时长 duration /
+// 字段严格等于 records.SymptomEntry：发生时间 occurredAt（ISO；未知为 ''）/
+//   occurredAtText（无法规范化的原话，如「昨天晚上」）/ 持续时长 duration /
 //   原话 text（必填非空）/ 影响 impact / 标签 tags[] / 单附件 attachment（≤1，
 //   string|null）。不新增任何判断类字段，界面亦不出现此类文案。
 //
 // 具体行为：
-//   - 列表：records.symptoms.list() 后按 occurredAt 倒序（同一时刻按 id 升序稳定排序）。
-//     每行展示：发生时间 / 持续时长 / 原话 / 影响 / 标签 / 附件指示 / 创建与更新时间戳。
-//   - 表单：新增与编辑共用；时间用日期+时间选择器拼成 ISO；标签以逗号分隔文本录入，
-//     保存时切分为字符串数组（去空、去重、保序）。编辑时载入原值，可整条保存。
-//   - 校验：原话 trim() 后为空时给出错误提示且不写入任何存储（记录层亦会拒绝）。
+//   - 列表：records.symptoms.list() 后按发生时间倒序（不可解析时回退 createdAt；
+//     同一时刻按 id 升序稳定排序）。
+//   - 表单：新增与编辑共用；时间用日期+时间选择器拼成 ISO（UTC+8）。编辑时载入原值，
+//     未改动时间则保存时省略 occurredAt（绝不静默改写为当前时刻）；改动但不完整时报错。
+//   - 校验：原话 trim() 后为空时给出错误提示且不写入任何存储。
 //   - 删除：弹出确认后经 attachments.deleteRecordWithAttachment 删除记录并同步删附件。
 //   - 附件：最多 1 个。新增经 attachments.addWithAttachment；编辑选新附件时经
-//     attachments.replaceAttachment（替换即先删旧文件）。附件仅本地保存与展示，不判读。
+//     attachments.replaceAttachment（先存新文件、成功后才删旧文件）。两条路径都消费
+//     返回的 notice/warning 并给出条件反馈，不再无条件谎报成功。
 //   - 无障碍（任务 16 契约）：data 展开 A11Y_DATA，onShow 调 syncA11y，根节点消费
 //     `--mhp-scale` 与 `is-hc`。
-//
-// 数据层：只经 records.symptoms 与 attachments（均纯本地，无网络）；不直接调用
-//   storage，也不自建键。所有写入走整对象 setData，便于 node 端页面逻辑检查驱动真实方法。
 
 import { BUTTONS, EMPTY, SYMPTOMS } from '../../config/texts';
 import { A11Y_DATA, syncA11y } from '../../shared/ui/a11y';
@@ -29,6 +28,7 @@ import {
   deleteRecordWithAttachment,
   replaceAttachment,
 } from '../../shared/services/attachments';
+import { formatStamp, isoToWallClock, wallClockToIso, nowWallClock } from '../../shared/utils/time';
 import type { SymptomEntry, SymptomInput } from '../../shared/services/records';
 
 /** 表单字段；时间拆成日期与时间两段便于 picker 绑定。 */
@@ -44,7 +44,6 @@ interface SymptomForm {
 /** 时间线一行（跨实体归一化后的展示数据）。 */
 interface SymptomRow {
   id: string;
-  occurredAt: string;
   occurredLabel: string;
   duration: string;
   text: string;
@@ -65,46 +64,17 @@ const EMPTY_FORM: SymptomForm = {
   tagsText: '',
 };
 
-function pad2(value: number): string {
-  return value < 10 ? '0' + value : String(value);
-}
-
 function baseName(filePath: string): string {
   const slash = filePath.lastIndexOf('/');
   return slash === -1 ? filePath : filePath.slice(slash + 1);
 }
 
-/** ISO -> `YYYY-MM-DD HH:mm`（本地）；无法解析时返回空串（不伪造时间）。 */
-function formatStamp(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '';
-  return (
-    `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ` +
-    `${pad2(date.getHours())}:${pad2(date.getMinutes())}`
-  );
-}
-
-/** ISO -> picker 的 { date: 'YYYY-MM-DD', time: 'HH:mm' }（本地）。 */
-function isoToParts(iso: string): { date: string; time: string } {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return { date: '', time: '' };
-  return {
-    date: `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`,
-    time: `${pad2(date.getHours())}:${pad2(date.getMinutes())}`,
-  };
-}
-
-/** 当前本地时间的 picker 片段。 */
-function nowParts(): { date: string; time: string } {
-  return isoToParts(new Date().toISOString());
-}
-
-/** 日期 + 时间 -> ISO；任一段缺失或非法时回退到当前时刻。 */
-function toIso(date: string, time: string): string {
-  if (date === '' || time === '') return new Date().toISOString();
-  const parsed = new Date(`${date}T${time}:00`);
-  if (Number.isNaN(parsed.getTime())) return new Date().toISOString();
-  return parsed.toISOString();
+/** 排序键：优先 occurredAt，不可解析时回退 createdAt，再不行回退 0。 */
+function symptomSortMs(item: SymptomEntry): number {
+  const occurred = Date.parse(item.occurredAt);
+  if (Number.isFinite(occurred)) return occurred;
+  const created = Date.parse(item.createdAt);
+  return Number.isFinite(created) ? created : 0;
 }
 
 /** 逗号分隔文本 -> 标签数组（去空、去重、保序）。中英文逗号/顿号/换行均作分隔符。 */
@@ -124,12 +94,18 @@ function joinTags(tags: string[]): string {
   return tags.join(', ');
 }
 
-/** 读取列表并归一化为展示行，按发生时间倒序（同一时刻按 id 升序稳定）。 */
+/** 展示用发生时间：ISO 本地化；否则显示用户原话 occurredAtText；都没有则空。 */
+function occurredLabelOf(item: SymptomEntry): string {
+  const stamp = formatStamp(item.occurredAt);
+  if (stamp !== '') return stamp;
+  return typeof item.occurredAtText === 'string' ? item.occurredAtText : '';
+}
+
+/** 读取列表并归一化为展示行，按发生时间倒序（不可解析回退 createdAt；同键按 id 升序）。 */
 function buildRows(list: SymptomEntry[]): SymptomRow[] {
   const rows = list.map((item) => ({
     id: item.id,
-    occurredAt: item.occurredAt,
-    occurredLabel: formatStamp(item.occurredAt),
+    occurredLabel: occurredLabelOf(item),
     duration: item.duration,
     text: item.text,
     impact: item.impact,
@@ -139,12 +115,13 @@ function buildRows(list: SymptomEntry[]): SymptomRow[] {
       typeof item.attachment === 'string' && item.attachment !== '' ? baseName(item.attachment) : '',
     createdLabel: formatStamp(item.createdAt),
     updatedLabel: formatStamp(item.updatedAt),
+    sortMs: symptomSortMs(item),
   }));
   rows.sort((a, b) => {
-    if (a.occurredAt !== b.occurredAt) return a.occurredAt < b.occurredAt ? 1 : -1;
+    if (a.sortMs !== b.sortMs) return a.sortMs > b.sortMs ? -1 : 1;
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
-  return rows;
+  return rows.map(({ sortMs, ...row }) => row);
 }
 
 Page({
@@ -156,9 +133,12 @@ Page({
     formOpen: false,
     editingId: '',
     form: { ...EMPTY_FORM } as SymptomForm,
+    initialDate: '',
+    initialTime: '',
     pendingAttachment: '',
     existingAttachment: '',
     attachmentName: '',
+    picking: false,
     errorText: '',
     copy: SYMPTOMS,
     buttons: BUTTONS,
@@ -168,6 +148,13 @@ Page({
   onShow() {
     syncA11y(this);
     syncSidebar(this);
+    if (typeof wx.setNavigationBarColor === 'function') {
+      const hc = this.data.highContrast === true;
+      wx.setNavigationBarColor({
+        frontColor: hc ? '#ffffff' : '#000000',
+        backgroundColor: hc ? '#000000' : '#ffffff',
+      });
+    }
     this.refresh();
   },
 
@@ -178,21 +165,29 @@ Page({
 
   /** 重新读取本地症状记录并刷新列表（返回本页时也会触发）。 */
   refresh() {
-    const rows = buildRows(records.symptoms.list());
+    let rows: SymptomRow[] = [];
+    try {
+      rows = buildRows(records.symptoms.list());
+    } catch (e) {
+      rows = [];
+    }
     this.setData({ rows, hasRecords: rows.length > 0 });
   },
 
   // ----- 表单 -----
 
   onAdd() {
-    const now = nowParts();
+    const now = nowWallClock();
     this.setData({
       formOpen: true,
       editingId: '',
       form: { date: now.date, time: now.time, duration: '', text: '', impact: '', tagsText: '' },
+      initialDate: now.date,
+      initialTime: now.time,
       pendingAttachment: '',
       existingAttachment: '',
       attachmentName: '',
+      picking: false,
       errorText: '',
     });
   },
@@ -202,7 +197,7 @@ Page({
     if (typeof id !== 'string' || id === '') return;
     const record = records.symptoms.get(id);
     if (record === null) return;
-    const parts = isoToParts(record.occurredAt);
+    const parts = isoToWallClock(record.occurredAt);
     const attachment = typeof record.attachment === 'string' ? record.attachment : '';
     this.setData({
       formOpen: true,
@@ -215,9 +210,12 @@ Page({
         impact: record.impact,
         tagsText: joinTags(record.tags),
       },
+      initialDate: parts.date,
+      initialTime: parts.time,
       pendingAttachment: '',
       existingAttachment: attachment,
       attachmentName: attachment === '' ? '' : baseName(attachment),
+      picking: false,
       errorText: '',
     });
     if (typeof wx.vibrateShort === 'function') wx.vibrateShort({ type: 'light' });
@@ -228,9 +226,12 @@ Page({
       formOpen: false,
       editingId: '',
       form: { ...EMPTY_FORM },
+      initialDate: '',
+      initialTime: '',
       pendingAttachment: '',
       existingAttachment: '',
       attachmentName: '',
+      picking: false,
       errorText: '',
     });
   },
@@ -261,9 +262,11 @@ Page({
     this.setData({ form: { ...this.data.form, tagsText: event.detail.value }, errorText: '' });
   },
 
-  /** 选择 1 个附件（图片）：仅记录临时路径，保存时才落盘。 */
+  /** 选择 1 个附件（图片）：仅记录临时路径，保存时才落盘；失败/结束都有可见反馈。 */
   onPickAttachment() {
     if (typeof wx.chooseMedia !== 'function') return;
+    if (this.data.picking) return;
+    this.setData({ picking: true });
     wx.chooseMedia({
       count: 1,
       mediaType: ['image'],
@@ -275,67 +278,140 @@ Page({
           this.setData({ pendingAttachment: temp, attachmentName: baseName(temp) });
         }
       },
+      fail: () => {
+        this.setData({ errorText: SYMPTOMS.attachmentPickFailed });
+        if (typeof wx.showToast === 'function') {
+          wx.showToast({ title: SYMPTOMS.attachmentPickFailed, icon: 'none' });
+        }
+      },
+      complete: () => {
+        this.setData({ picking: false });
+      },
     });
   },
 
+  /** 统一的 toast 封装：宿主缺失时静默跳过，不抛错。 */
+  notify(title: string, icon: 'none' | 'success') {
+    if (typeof wx.showToast === 'function') wx.showToast({ title, icon });
+  },
+
+  /** 成功/软警告反馈：warning 非空时以提示语气显示，否则显示成功。 */
+  feedback(warning: string | undefined, successTitle: string) {
+    if (warning === undefined) this.notify(successTitle, 'success');
+    else this.notify(warning, 'none');
+  },
+
   /**
-   * 保存：原话 trim 后为空 -> 提示且不写入。编辑走 update（更换附件时另经
-   * replaceAttachment），新增走 addWithAttachment。成功后刷新列表并关闭表单。
+   * 保存：原话 trim 后为空 -> 提示且不写入。编辑仅在时间被改动时写入 occurredAt
+   * （绝不静默改为当前时刻）；更换附件经 replaceAttachment（先存新、成功后删旧），
+   * 失败则整体不改并给出明确提示。新增经 addWithAttachment，附件失败仍会写入记录，
+   * 但明确告知「记录已保存，但附件未保存」。
    */
   onSave() {
     const form = this.data.form;
     const text = form.text.trim();
     if (text === '') {
       this.setData({ errorText: SYMPTOMS.requiredHint });
-      if (typeof wx.showToast === 'function') wx.showToast({ title: SYMPTOMS.requiredHint, icon: 'none' });
+      this.notify(SYMPTOMS.requiredHint, 'none');
       return;
     }
 
-    const occurredAt = toIso(form.date, form.time);
     const duration = form.duration.trim();
     const impact = form.impact.trim();
     const tags = splitTags(form.tagsText);
+    const editing = this.data.editingId !== '';
 
-    if (this.data.editingId !== '') {
-      const id = this.data.editingId;
-      const patch: Partial<SymptomInput> = { occurredAt, duration, text, impact, tags };
-      if (this.data.pendingAttachment !== '') {
-        records.symptoms.update(id, patch);
-        replaceAttachment(records.symptoms, id, this.data.pendingAttachment);
-      } else {
-        records.symptoms.update(id, {
-          ...patch,
-          attachment: this.data.existingAttachment === '' ? null : this.data.existingAttachment,
-        });
+    let occurredAt: string | undefined;
+    if (editing) {
+      const timeChanged =
+        form.date !== this.data.initialDate || form.time !== this.data.initialTime;
+      if (timeChanged) {
+        const iso = wallClockToIso(form.date, form.time);
+        if (iso === null) {
+          this.setData({ errorText: SYMPTOMS.timeRequiredHint });
+          this.notify(SYMPTOMS.timeRequiredHint, 'none');
+          return;
+        }
+        occurredAt = iso;
       }
     } else {
-      const input: SymptomInput = {
-        occurredAt,
-        duration,
-        text,
-        impact,
-        tags,
-        attachment: null,
-      };
-      addWithAttachment(
-        records.symptoms,
-        input,
-        this.data.pendingAttachment === '' ? null : this.data.pendingAttachment
-      );
+      const iso = wallClockToIso(form.date, form.time);
+      if (iso === null) {
+        this.setData({ errorText: SYMPTOMS.timeRequiredHint });
+        this.notify(SYMPTOMS.timeRequiredHint, 'none');
+        return;
+      }
+      occurredAt = iso;
     }
 
+    try {
+      if (editing) {
+        const id = this.data.editingId;
+        const patch: Partial<SymptomInput> = { duration, text, impact, tags };
+        if (occurredAt !== undefined) patch.occurredAt = occurredAt;
+
+        if (this.data.pendingAttachment !== '') {
+          const replaced = replaceAttachment(records.symptoms, id, this.data.pendingAttachment);
+          if (!replaced.saved) {
+            const reason = replaced.notice === undefined ? '' : `（${replaced.notice}）`;
+            const message = `${SYMPTOMS.attachmentReplaceFailed}${reason}`;
+            this.setData({ errorText: message });
+            this.notify(message, 'none');
+            return;
+          }
+          records.symptoms.update(id, patch);
+          this.feedback(replaced.warning, SYMPTOMS.savedHint);
+        } else {
+          records.symptoms.update(id, {
+            ...patch,
+            attachment: this.data.existingAttachment === '' ? null : this.data.existingAttachment,
+          });
+          this.feedback(undefined, SYMPTOMS.savedHint);
+        }
+      } else {
+        const input: SymptomInput = {
+          occurredAt: occurredAt as string,
+          duration,
+          text,
+          impact,
+          tags,
+          attachment: null,
+        };
+        const result = addWithAttachment(
+          records.symptoms,
+          input,
+          this.data.pendingAttachment === '' ? null : this.data.pendingAttachment
+        );
+        if (result.notice !== undefined) {
+          this.notify(`${SYMPTOMS.attachmentNotSaved}（${result.notice}）`, 'none');
+        } else {
+          this.feedback(result.warning, SYMPTOMS.savedHint);
+        }
+      }
+    } catch (e) {
+      this.setData({ errorText: SYMPTOMS.saveFailed });
+      this.notify(SYMPTOMS.saveFailed, 'none');
+      return;
+    }
+
+    this.closeForm();
+    this.refresh();
+    if (typeof wx.vibrateShort === 'function') wx.vibrateShort({ type: 'light' });
+  },
+
+  closeForm() {
     this.setData({
       formOpen: false,
       editingId: '',
       form: { ...EMPTY_FORM },
+      initialDate: '',
+      initialTime: '',
       pendingAttachment: '',
       existingAttachment: '',
       attachmentName: '',
+      picking: false,
       errorText: '',
     });
-    this.refresh();
-    if (typeof wx.vibrateShort === 'function') wx.vibrateShort({ type: 'light' });
-    if (typeof wx.showToast === 'function') wx.showToast({ title: SYMPTOMS.savedHint, icon: 'success' });
   },
 
   /** 删除：确认后删除记录并同步删除其附件。 */
@@ -343,20 +419,15 @@ Page({
     const id = event.currentTarget.dataset.id;
     if (typeof id !== 'string' || id === '') return;
     const doDelete = () => {
-      deleteRecordWithAttachment(records.symptoms, id);
-      if (this.data.editingId === id) {
-        this.setData({
-          formOpen: false,
-          editingId: '',
-          form: { ...EMPTY_FORM },
-          pendingAttachment: '',
-          existingAttachment: '',
-          attachmentName: '',
-          errorText: '',
-        });
+      try {
+        deleteRecordWithAttachment(records.symptoms, id);
+      } catch (e) {
+        this.notify(SYMPTOMS.deleteFailed, 'none');
+        return;
       }
+      if (this.data.editingId === id) this.closeForm();
       this.refresh();
-      if (typeof wx.showToast === 'function') wx.showToast({ title: SYMPTOMS.deletedHint, icon: 'none' });
+      this.notify(SYMPTOMS.deletedHint, 'none');
     };
 
     if (typeof wx.showModal === 'function') {

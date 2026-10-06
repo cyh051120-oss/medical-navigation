@@ -43,6 +43,10 @@
 /* body tier */
 .hero__add {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 88rpx;
   padding: var(--mhp-space-4) var(--mhp-space-8);
   border-radius: var(--radius-xl);
   font-size: calc(28rpx * var(--mhp-scale));
@@ -81,7 +85,10 @@
 /* caption tier */
 .editor__close {
   flex: none;
-  padding: var(--mhp-space-2) var(--mhp-space-4);
+  display: inline-flex;
+  align-items: center;
+  min-height: 88rpx;
+  padding: 0 var(--mhp-space-4);
   font-size: calc(24rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-caption);
   color: var(--text-caption);
@@ -332,6 +339,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-height: 88rpx;
   padding: var(--mhp-space-5) var(--mhp-space-8);
   border-radius: var(--radius-md);
   text-align: center;

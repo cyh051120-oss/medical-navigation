@@ -1,6 +1,23 @@
 <!-- pages/settings/settings.wxml — 设置（任务 15）。
      字号缩放：根节点内联 --mhp-scale 即时生效；高对比：is-hc 类启用 app.wxss 变量。 -->
-<view class="settings app-shell {{highContrast ? 'is-hc' : ''}} {{sidebarCollapsed ? 'is-collapsed' : ''}}" style="--mhp-scale: {{scale}}">
+<view class="settings app-shell {{highContrast ? 'is-hc' : ''}} {{sidebarCollapsed ? 'is-collapsed' : ''}}" style="--mhp-scale: {{scale}}; --mhp-layout-scale: {{layoutScale}}">
+  <view class="privacy-overlay" wx:if="{{privacyAuthPrompt}}" aria-role="alert">
+    <view class="privacy-overlay__panel">
+      <text class="privacy-overlay__title">需要隐私授权</text>
+      <text class="privacy-overlay__text">为继续本次操作，需要你先同意平台的隐私保护指引。协议全文可在下方查看。</text>
+      <view class="privacy-actions">
+        <button
+          id="privacy-agree-overlay"
+          class="privacy-btn"
+          open-type="agreePrivacyAuthorization"
+          bindagreeprivacyauthorization="onAgreePrivacyAuthorization"
+          aria-label="同意平台隐私保护指引"
+        >同意并继续</button>
+        <view class="btn btn--ghost" bindtap="onDenyPrivacyAuthorization" aria-role="button" aria-label="暂不同意隐私授权">暂不同意</view>
+        <view class="btn btn--ghost" bindtap="onOpenPrivacyContract" aria-role="button" aria-label="查看隐私保护指引全文">查看协议全文</view>
+      </view>
+    </view>
+  </view>
   <app-sidebar current="settings" collapsed="{{sidebarCollapsed}}" scale="{{scale}}" bind:toggle="onSidebarToggle" />
   <view class="settings-hero">
     <text class="settings-hero__title">设置</text>
@@ -86,7 +103,7 @@
 
     <view class="mem-list" wx:else>
       <view class="mem-item" wx:for="{{memories}}" wx:key="id">
-        <view class="mem-item__main" data-id="{{item.id}}" bindtap="onMemoryEdit">
+        <view class="mem-item__main" data-id="{{item.id}}" bindtap="onMemoryEdit" aria-role="button" aria-label="编辑记忆：{{item.text}}">
           <view class="mem-item__head">
             <text class="mem-badge mem-badge--{{item.source}}">{{item.sourceLabel}}</text>
             <text class="mem-item__text">{{item.text}}</text>
@@ -94,7 +111,7 @@
         </view>
         <view class="mem-item__actions">
           <switch checked="{{item.enabled}}" data-id="{{item.id}}" bindchange="onMemoryToggle" />
-          <view class="btn btn--ghost" data-id="{{item.id}}" bindtap="onMemoryDelete">{{buttons.delete}}</view>
+          <view class="btn btn--ghost" data-id="{{item.id}}" bindtap="onMemoryDelete" aria-role="button" aria-label="删除这条记忆">{{buttons.delete}}</view>
         </view>
       </view>
     </view>
@@ -109,13 +126,13 @@
         maxlength="60"
       />
       <view class="mem-form__actions">
-        <view class="btn btn--primary" bindtap="onMemorySave">{{buttons.save}}</view>
-        <view class="btn btn--ghost" wx:if="{{editingId}}" bindtap="onMemoryCancelEdit">{{buttons.cancel}}</view>
+        <view class="btn btn--primary" bindtap="onMemorySave" aria-role="button" aria-label="{{buttons.save}}">{{buttons.save}}</view>
+        <view class="btn btn--ghost" wx:if="{{editingId}}" bindtap="onMemoryCancelEdit" aria-role="button" aria-label="{{buttons.cancel}}">{{buttons.cancel}}</view>
       </view>
       <text class="mhp-error" wx:if="{{memoryError}}">{{memoryError}}</text>
     </view>
 
-    <view class="btn btn--danger" wx:if="{{hasMemories}}" bindtap="onMemoryClearAll">{{memory.clearAllButton}}</view>
+    <view class="btn btn--danger" wx:if="{{hasMemories}}" bindtap="onMemoryClearAll" aria-role="button" aria-label="清空所有 AI 记忆">{{memory.clearAllButton}}</view>
   </view>
 
   <view class="card">
@@ -124,7 +141,7 @@
     <view class="row row--block">
       <text class="row__label">{{exportCopy.button}}</text>
       <text class="row__hint">{{exportCopy.notice}}</text>
-      <view class="btn btn--primary" bindtap="onExport">{{exportCopy.button}}</view>
+      <view class="btn btn--primary" bindtap="onExport" aria-role="button" aria-label="{{exportCopy.button}}">{{exportCopy.button}}</view>
       <text class="result" wx:if="{{exportPath}}">已导出到：{{exportPath}}</text>
       <text class="result mhp-error" wx:if="{{exportError}}">{{exportError}}</text>
     </view>
@@ -132,14 +149,61 @@
     <view class="divider"></view>
 
     <view class="row row--block">
+      <text class="row__label">{{exportCopy.exportsTitle}}</text>
+      <text class="row__hint">{{exportCopy.exportsNotice}}</text>
+      <text class="result mhp-error" wx:if="{{exportListError}}">{{exportListError}}</text>
+      <view class="mem-list" wx:elif="{{hasExports}}">
+        <view class="mem-item" wx:for="{{exportFiles}}" wx:key="path">
+          <view class="mem-item__main">
+            <view class="mem-item__head">
+              <text class="mem-item__text">{{item.name}}</text>
+              <text class="mem-badge mem-badge--legacy" wx:if="{{item.legacy}}">旧版导出</text>
+            </view>
+            <text class="row__hint">{{item.sizeLabel}}</text>
+          </view>
+          <view class="mem-item__actions">
+            <view class="btn btn--ghost" data-path="{{item.path}}" bindtap="onDeleteExport" aria-role="button" aria-label="删除导出文件 {{item.name}}">{{buttons.delete}}</view>
+          </view>
+        </view>
+      </view>
+      <text class="result" wx:else>{{exportCopy.exportsEmpty}}</text>
+      <view class="btn btn--ghost" wx:if="{{hasExports}}" bindtap="onClearExports" aria-role="button" aria-label="清空所有导出文件">{{exportCopy.clearExports}}</view>
+    </view>
+
+    <view class="divider"></view>
+
+    <view class="row row--block">
       <text class="row__label">{{wipeCopy.button}}</text>
       <text class="row__hint">{{wipeCopy.firstContent}}</text>
-      <view class="btn btn--danger" bindtap="onWipe">{{wipeCopy.button}}</view>
+      <view class="btn btn--danger" bindtap="onWipe" aria-role="button" aria-label="{{wipeCopy.button}}">{{wipeCopy.button}}</view>
       <text class="result mhp-error" wx:if="{{wipeError}}">{{wipeCopy.failedHint}}：{{wipeError}}</text>
-      <view class="btn btn--ghost" wx:if="{{wipeError}}" bindtap="onWipe">{{wipeCopy.retryButton}}</view>
+      <view class="btn btn--ghost" wx:if="{{wipeError}}" bindtap="onWipe" aria-role="button" aria-label="{{wipeCopy.retryButton}}">{{wipeCopy.retryButton}}</view>
     </view>
 
     <text class="result" wx:if="{{resultText}}">{{resultText}}</text>
+  </view>
+
+  <view class="card">
+    <view class="row__head">
+      <text class="card__title">隐私授权</text>
+      <text class="mem-badge" wx:if="{{privacyNeedAuth}}">待授权</text>
+    </view>
+    <text class="para">{{privacyStatusText}}</text>
+    <view class="scope" wx:if="{{privacyContractName}}">
+      <text class="scope__title">平台隐私协议</text>
+      <text class="scope__text">{{privacyContractName}}</text>
+    </view>
+    <view class="privacy-actions">
+      <button
+        id="privacy-agree-section"
+        class="privacy-btn"
+        open-type="agreePrivacyAuthorization"
+        bindagreeprivacyauthorization="onAgreePrivacyAuthorization"
+        aria-label="同意平台隐私保护指引"
+      >同意平台隐私保护指引</button>
+      <view class="btn btn--ghost" bindtap="onOpenPrivacyContract" aria-role="button" aria-label="查看隐私保护指引全文">查看协议全文</view>
+    </view>
+    <text class="result mhp-error" wx:if="{{privacyAuthError}}">{{privacyAuthError}}</text>
   </view>
 
   <view class="card">

@@ -10,20 +10,12 @@
 //   - 本页不做任何医疗判断、不补写内容、不新增判断类字段。缺失字段由 build() 整体省略。
 //
 // 具体行为：
-//   - 选择：列出本机症状 / 资料摘录 / 待问问题，逐条多选切换，另有「全选 / 清空选择」，
-//     并显示已选条数；个人档案存在且在 build() 语义下有内容时自动纳入（不作为勾选项）。
-//     三类来源都为空时给出空态引导。
-//   - 生成：把选中记录（含可用档案）交给 build()；生成的文本放入可编辑 textarea，并保留
-//     build 的 sourceIds 供保存。空选择（无勾选且无可用档案）时明确提示且**不覆盖**已有
-//     编辑内容（失败契约：不伪成功）。
-//   - 保存：仅经 records.briefs.add 写入 VisitBrief（content / sourceIds / exportedAt=当前
-//     ISO 时间），保存后显示导出时间与成功提示；内容为空时拒绝写入。
-//   - 复制：toClipboard(text)；成功提示，失败（reject）时展示错误提示且**不**弹成功提示。
-//   - 无障碍（任务 16 契约）：data 展开 A11Y_DATA，onShow 调 syncA11y，根节点消费
-//     `--mhp-scale` 与 `is-hc`。
-//
-// 数据层：只经 records.*（纯本地，无网络）；不直接调用 storage，也不自建键。所有写入走整
-// 对象 setData，便于 node 端页面逻辑检查驱动真实方法。
+//   - 选择 / 生成 / 编辑：见原有契约。
+//   - 保存：仅经 records.briefs.add/update 写入 VisitBrief（content / sourceIds /
+//     exportedAt=null）。保存不代表导出，exportedAt 只在真正复制或导出图片后写入。
+//   - 已保存摘要：列出本机已存摘要，可打开续编或单条删除（不再只能整包清除）。
+//   - 图片导出：导出成功若内容被版式截断，页面显式提示（posterOverflow）。
+//   - 无障碍（任务 16 契约）：data 展开 A11Y_DATA，onShow 调 syncA11y。
 
 import { BRIEF, BUTTONS, EMPTY, POSTER } from '../../config/texts';
 import { build, toClipboard } from '../../shared/services/brief';
@@ -33,6 +25,7 @@ import type { PosterContext } from '../../shared/services/poster';
 import { A11Y_DATA, syncA11y } from '../../shared/ui/a11y';
 import { SIDEBAR_DATA, setSidebarCollapsed, syncSidebar } from '../../shared/ui/sidebar';
 import { records } from '../../shared/services/records';
+import { formatStamp } from '../../shared/utils/time';
 import type { DocumentNote, LocalProfile, QuestionList, SymptomEntry } from '../../shared/services/records';
 
 /** 一条可选记录在界面上的展示数据。 */
@@ -41,6 +34,14 @@ interface SelectRow {
   title: string;
   meta: string;
   selected: boolean;
+}
+
+/** 一条已保存摘要的展示数据。 */
+interface SavedBriefRow {
+  id: string;
+  preview: string;
+  savedLabel: string;
+  exportedLabel: string;
 }
 
 /** 选择汇总（已选条数 + 是否非空）。 */
@@ -67,22 +68,15 @@ interface ImageExportResult {
   path: string;
 }
 
-function pad2(value: number): string {
-  return value < 10 ? '0' + value : String(value);
-}
-
-/** ISO -> `YYYY-MM-DD HH:mm`（本地）；无法解析时返回空串（不伪造时间）。 */
-function formatStamp(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '';
-  return (
-    `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ` +
-    `${pad2(date.getHours())}:${pad2(date.getMinutes())}`
-  );
-}
-
 function isFilled(value: string): boolean {
   return typeof value === 'string' && value.trim() !== '';
+}
+
+/** 已保存摘要的一行预览（取首行并截断，不改变原文）。 */
+function previewOf(content: string): string {
+  const line = content.split('\n').find((row) => row.trim() !== '') ?? '';
+  const trimmed = line.trim();
+  return trimmed.length > 24 ? `${trimmed.slice(0, 24)}…` : trimmed;
 }
 
 /**
@@ -117,7 +111,8 @@ function summarize(symptoms: SelectRow[], notes: SelectRow[], questions: SelectR
 }
 
 function symptomRow(symptom: SymptomEntry, copy: typeof BRIEF, selected: boolean): SelectRow {
-  const meta = symptom.occurredAt === '' ? copy.symptomsGroup : symptom.occurredAt;
+  const stamp = formatStamp(symptom.occurredAt);
+  const meta = stamp !== '' ? stamp : isFilled(symptom.occurredAtText ?? '') ? (symptom.occurredAtText as string) : copy.symptomsGroup;
   return { id: symptom.id, title: symptom.text, meta, selected };
 }
 
@@ -129,6 +124,22 @@ function noteRow(note: DocumentNote, selected: boolean): SelectRow {
 
 function questionRow(question: QuestionList, copy: typeof BRIEF, selected: boolean): SelectRow {
   return { id: question.id, title: question.text, meta: question.done ? copy.questionsGroup + ' · 已问' : copy.questionsGroup, selected };
+}
+
+function buildSavedBriefRows(): SavedBriefRow[] {
+  const rows = records.briefs.list().map((brief) => ({
+    id: brief.id,
+    preview: previewOf(brief.content),
+    savedLabel: formatStamp(brief.createdAt),
+    exportedLabel: brief.exportedAt === null ? '' : formatStamp(brief.exportedAt),
+    sortMs: Date.parse(brief.createdAt),
+  }));
+  rows.sort((a, b) => {
+    const left = Number.isFinite(a.sortMs) ? a.sortMs : 0;
+    const right = Number.isFinite(b.sortMs) ? b.sortMs : 0;
+    return right - left;
+  });
+  return rows.map(({ sortMs, ...row }) => row);
 }
 
 Page({
@@ -144,8 +155,10 @@ Page({
     hasSelection: false,
     content: '',
     sourceIds: [] as string[],
+    currentBriefId: '',
     savedAt: '',
-    savedAtIso: '',
+    savedBriefs: [] as SavedBriefRow[],
+    hasSavedBriefs: false,
     hint: '',
     errorText: '',
     previewPath: '',
@@ -160,6 +173,13 @@ Page({
   onShow() {
     syncA11y(this);
     syncSidebar(this);
+    if (typeof wx.setNavigationBarColor === 'function') {
+      const hc = this.data.highContrast === true;
+      wx.setNavigationBarColor({
+        frontColor: hc ? '#ffffff' : '#000000',
+        backgroundColor: hc ? '#000000' : '#ffffff',
+      });
+    }
     this.refresh();
   },
 
@@ -168,7 +188,7 @@ Page({
     this.setData(setSidebarCollapsed(!this.data.sidebarCollapsed));
   },
 
-  /** 重新读取本地记录并刷新三类选择列表；按 id 保留已勾选状态。 */
+  /** 重新读取本地记录并刷新三类选择列表与已保存摘要；按 id 保留已勾选状态。 */
   refresh() {
     const prev: Record<string, boolean> = {};
     for (const row of this.data.symptomRows.concat(this.data.noteRows, this.data.questionRows)) {
@@ -193,6 +213,18 @@ Page({
       questionRows,
       ...summarize(symptomRows, noteRows, questionRows),
     });
+    this.refreshSavedBriefs();
+  },
+
+  /** 仅刷新已保存摘要列表。 */
+  refreshSavedBriefs() {
+    let savedBriefs: SavedBriefRow[] = [];
+    try {
+      savedBriefs = buildSavedBriefRows();
+    } catch (e) {
+      savedBriefs = [];
+    }
+    this.setData({ savedBriefs, hasSavedBriefs: savedBriefs.length > 0 });
   },
 
   // ----- 选择 -----
@@ -284,10 +316,12 @@ Page({
     this.setData({
       content: result.text,
       sourceIds: result.sourceIds,
+      currentBriefId: '',
       savedAt: '',
       hint: '',
       errorText: '',
       previewPath: '',
+      posterOverflow: false,
     });
     return { generated: true, sourceIds: result.sourceIds };
   },
@@ -297,15 +331,20 @@ Page({
   onContentInput(event: WechatMiniprogram.TextareaInput) {
     this.setData({
       content: event.detail.value,
+      currentBriefId: '',
       savedAt: '',
       hint: '',
       errorText: '',
       previewPath: '',
+      posterOverflow: false,
     });
   },
 
-  /** 保存为 VisitBrief：写入 {content, sourceIds, exportedAt=当前 ISO}。内容为空时拒绝。 */
-  onSave(): { saved: boolean; exportedAt: string } {
+  /**
+   * 保存为 VisitBrief：写入 {content, sourceIds, exportedAt=null}。若当前正打开一条已保存
+   * 摘要则更新它，否则新增。内容为空时拒绝。保存 ≠ 导出，exportedAt 只在真正导出后写入。
+   */
+  onSave(): { saved: boolean; exportedAt: string | null } {
     const copy = this.data.copy;
     const text = this.data.content;
     if (!isFilled(text)) {
@@ -313,27 +352,96 @@ Page({
       if (typeof wx.showToast === 'function') {
         wx.showToast({ title: copy.saveEmpty, icon: 'none' });
       }
-      return { saved: false, exportedAt: '' };
+      return { saved: false, exportedAt: null };
     }
 
-    const exportedAt = new Date().toISOString();
-    const record = records.briefs.add({
-      content: text,
-      sourceIds: this.data.sourceIds.slice(),
-      exportedAt,
-    });
+    try {
+      const existingId = this.data.currentBriefId;
+      const record =
+        existingId !== '' && records.briefs.get(existingId) !== null
+          ? records.briefs.update(existingId, { content: text, sourceIds: this.data.sourceIds.slice() })
+          : records.briefs.add({ content: text, sourceIds: this.data.sourceIds.slice(), exportedAt: null });
+      this.setData({
+        currentBriefId: record.id,
+        savedAt: record.exportedAt === null ? '' : formatStamp(record.exportedAt),
+        hint: copy.saveHint,
+        errorText: '',
+      });
+      this.refreshSavedBriefs();
+      if (typeof wx.vibrateShort === 'function') wx.vibrateShort({ type: 'light' });
+      if (typeof wx.showToast === 'function') {
+        wx.showToast({ title: copy.saveHint, icon: 'success' });
+      }
+      return { saved: true, exportedAt: record.exportedAt };
+    } catch (e) {
+      this.setData({ errorText: copy.saveFailed, hint: '' });
+      if (typeof wx.showToast === 'function') {
+        wx.showToast({ title: copy.saveFailed, icon: 'none' });
+      }
+      return { saved: false, exportedAt: null };
+    }
+  },
 
+  // ----- 已保存摘要 -----
+
+  /** 打开一条已保存摘要：载入内容与来源，成为当前编辑对象。 */
+  onOpenBrief(event: WechatMiniprogram.TouchEvent) {
+    const id = event.currentTarget.dataset.id;
+    if (typeof id !== 'string' || id === '') return;
+    const record = records.briefs.get(id);
+    if (record === null) return;
     this.setData({
-      savedAt: formatStamp(record.exportedAt === null ? exportedAt : record.exportedAt),
-      savedAtIso: record.exportedAt === null ? exportedAt : record.exportedAt,
-      hint: copy.saveHint,
+      content: record.content,
+      sourceIds: record.sourceIds.slice(),
+      currentBriefId: record.id,
+      savedAt: record.exportedAt === null ? '' : formatStamp(record.exportedAt),
+      hint: this.data.copy.openHint,
       errorText: '',
+      previewPath: '',
+      posterOverflow: false,
     });
-    if (typeof wx.vibrateShort === 'function') wx.vibrateShort({ type: 'light' });
-    if (typeof wx.showToast === 'function') {
-      wx.showToast({ title: copy.saveHint, icon: 'success' });
+  },
+
+  /** 删除一条已保存摘要。 */
+  onDeleteBrief(event: WechatMiniprogram.TouchEvent) {
+    const id = event.currentTarget.dataset.id;
+    if (typeof id !== 'string' || id === '') return;
+    const copy = this.data.copy;
+    const doDelete = () => {
+      records.briefs.remove(id);
+      if (this.data.currentBriefId === id) {
+        this.setData({ currentBriefId: '', savedAt: '' });
+      }
+      this.refreshSavedBriefs();
+      if (typeof wx.showToast === 'function') {
+        wx.showToast({ title: copy.deleteSavedDone, icon: 'none' });
+      }
+    };
+    if (typeof wx.showModal === 'function') {
+      wx.showModal({
+        title: copy.deleteSavedTitle,
+        content: copy.deleteSavedConfirm,
+        success: (res) => {
+          if (res.confirm) doDelete();
+        },
+      });
+    } else {
+      doDelete();
     }
-    return { saved: true, exportedAt };
+  },
+
+  /** 真正发生导出（复制 / 生成图片）后，回写当前摘要的 exportedAt。 */
+  markExported() {
+    const id = this.data.currentBriefId;
+    if (id === '' || !isFilled(this.data.content)) return;
+    if (records.briefs.get(id) === null) return;
+    try {
+      const updated = records.briefs.update(id, { exportedAt: new Date().toISOString() });
+      this.setData({ savedAt: updated.exportedAt === null ? '' : formatStamp(updated.exportedAt) });
+      this.refreshSavedBriefs();
+    } catch (e) {
+      void e;
+    }
   },
 
   /**
@@ -357,6 +465,7 @@ Page({
         if (typeof wx.showToast === 'function') {
           wx.showToast({ title: copy.copyDone, icon: 'success' });
         }
+        this.markExported();
         return true;
       })
       .catch(() => {
@@ -384,15 +493,15 @@ Page({
     }
     if (this.data.exporting) return Promise.resolve({ exported: false, path: '' });
 
-    this.setData({ exporting: true, errorText: '', hint: '' });
+    this.setData({ exporting: true, errorText: '', hint: '', posterOverflow: false });
     if (typeof wx.showLoading === 'function') wx.showLoading({ title: POSTER.exporting, mask: true });
 
     const stamp = formatStamp(new Date().toISOString());
-    const plan = buildPosterPlan({ body: content, generatedAt: stamp === '' ? new Date().toISOString() : stamp });
+    const plan = buildPosterPlan({ body: content, generatedAt: stamp });
 
     return new Promise<ImageExportResult>((resolve) => {
       if (typeof wx.createSelectorQuery !== 'function') {
-        this.finishExport(false, POSTER.exportFailed);
+        this.finishExportError(POSTER.exportFailed);
         resolve({ exported: false, path: '' });
         return;
       }
@@ -402,7 +511,7 @@ Page({
         const first = res && res[0] ? (res[0] as CanvasFieldsResult) : undefined;
         const canvas = first !== undefined && first.node !== undefined ? first.node : null;
         if (canvas === null || typeof canvas.getContext !== 'function') {
-          this.finishExport(false, POSTER.exportFailed);
+          this.finishExportError(POSTER.exportFailed);
           resolve({ exported: false, path: '' });
           return;
         }
@@ -421,10 +530,11 @@ Page({
           success: (result) => {
             if (typeof wx.hideLoading === 'function') wx.hideLoading();
             this.setData({ previewPath: result.tempFilePath, exporting: false, posterOverflow: plan.bodyOverflow, hint: POSTER.exportDone, errorText: '' });
+            this.markExported();
             resolve({ exported: true, path: result.tempFilePath });
           },
           fail: () => {
-            this.finishExport(false, POSTER.exportFailed);
+            this.finishExportError(POSTER.exportFailed);
             resolve({ exported: false, path: '' });
           },
         });
@@ -432,13 +542,9 @@ Page({
     });
   },
 
-  /** 导出结束统一收尾：关 loading、清 exporting、按结果给提示。 */
-  finishExport(success: boolean, errorText: string) {
+  /** 导出失败统一收尾：关 loading、清 exporting、给出错误提示。 */
+  finishExportError(errorText: string) {
     if (typeof wx.hideLoading === 'function') wx.hideLoading();
-    if (success) {
-      this.setData({ exporting: false, errorText: '' });
-      return;
-    }
     this.setData({ exporting: false, errorText, hint: '' });
     if (typeof wx.showToast === 'function') wx.showToast({ title: errorText, icon: 'none' });
   },

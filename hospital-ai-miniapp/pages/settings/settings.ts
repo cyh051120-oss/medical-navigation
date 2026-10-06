@@ -10,32 +10,44 @@
 //      取消保持关闭；关闭立即生效、无需确认。
 //   3. AI 记忆：列表（内容 / 来源 / 启停）、新增与编辑、单条删除、清空全部、
 //      「AI 自动记忆」开关（preferences.autoMemory，默认开）。
-//   4. 数据：导出全部（文字记录 + 附件名称/路径引用，写入 USER_DATA_PATH，无网络）
-//      与清除所有本地资料（两步确认）。
+//   4. 数据：导出全部（文字记录 + 附件名称/路径引用，写入固定的 exports/mhp_export.json，
+//      并列出/删除导出文件，无网络）与清除所有本地资料（两步确认）。
 //   5. 隐私说明 / 非医疗器械声明 / 关于。
 //
 // 数据层：只经 records.preferences / records.memory / records.deleteAll /
 //   storage.purgeLegacy / attachments.clearAttachments / oplog.append 与宿主文件系统
 //   接口；不直连网络。所有写入走整对象 setData，便于 node 端页面逻辑检查驱动真实方法。
 //
-// 清除语义：deleteAll()（mhp_*）+ purgeLegacy()（旧命名空间）+ clearAttachments()
-//   （附件目录）三者完成后，再补一条 oplog 审计记录——因此清除后唯一存活的 mhp_ 键
-//   是 mhp_oplog；用户记录与附件均已清空。任一步抛错即中止并保留现状（键级原子，
-//   不存在半损坏键），可再次点击重试。
+// 清除语义：deleteAll()（mhp_* 键）+ purgeLegacy()（旧命名空间）+ clearAttachments()
+//   （附件目录）+ clearExports()（明文导出目录）完成后，再补一条 oplog 审计记录。
+//   删除失败（unlink/枚举异常）会如实计入结果并保留重试入口，绝不谎报「已清除」。
+//   任一步抛错即中止并保留现状，可再次点击重试。
 
-import { ABOUT, A11Y, BUTTONS, CONSENT, DEMO, DISCLAIMERS, EMPTY, EXPORT, LABELS, MEMORY, PRIVACY, WIPE } from '../../config/texts';
-import { PRIVACY_NOTICE_VERSION } from '../../app';
+import { ABOUT, A11Y, BUTTONS, CONSENT, DEMO, DISCLAIMERS, EXPORT, MEMORY, PRIVACY, WIPE } from '../../config/texts';
+import { PRIVACY_NOTICE_VERSION, setPrivacyAuthResolver } from '../../app';
+import type { PrivacyAuthResolution, PrivacyAuthResolver } from '../../app';
 import { records } from '../../shared/services/records';
 import { deleteAll } from '../../shared/services/records';
 import type { AppPreferences, MemoryItem } from '../../shared/services/records';
 import { FONT_SIZE_DEFAULT, FONT_SIZE_MAX, FONT_SIZE_MIN } from '../../shared/services/records';
 import * as storage from '../../shared/utils/storage';
-import { attachmentsDir, clearAttachments } from '../../shared/services/attachments';
+import {
+  attachmentsDir,
+  clearAttachments,
+  clearExports,
+  deleteExport,
+  ensureExportsDir,
+  exportFilePath,
+  listExportFiles,
+} from '../../shared/services/attachments';
 import * as oplog from '../../shared/services/oplog';
 import { ACCENT, ACCENT_HC } from '../../shared/ui/theme';
 import { SIDEBAR_DATA, setSidebarCollapsed, syncSidebar } from '../../shared/ui/sidebar';
 
 type Dict = Record<string, unknown>;
+
+/** 布局缩放上限，必须与 shared/ui/a11y.ts 的 LAYOUT_SCALE_CAP 一致（本页自行计算而不调用 syncA11y）。 */
+const LAYOUT_SCALE_CAP = 1.2;
 
 interface MemoryRow {
   id: string;
@@ -43,6 +55,22 @@ interface MemoryRow {
   source: string;
   sourceLabel: string;
   enabled: boolean;
+}
+
+/** 一条已导出文件的展示数据。 */
+interface ExportRow {
+  name: string;
+  path: string;
+  sizeLabel: string;
+  /** 旧版构建写入数据根目录的遗留导出（`legacy` 标记供界面区分）。 */
+  legacy: boolean;
+}
+
+/** 字节数 -> 人类可读大小（KB/MB，保留一位小数）。 */
+function sizeLabel(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /** 原生 slider 不读取 CSS 变量，强调色统一取自 shared/ui/theme.ts 的 JS 镜像。 */
@@ -146,10 +174,16 @@ function buildExportPayload(): Dict {
 }
 
 Page({
+  /** 页面是否处于可见（onShow..onHide）状态；不可见时不承接授权弹窗，直接拒绝。 */
+  pageShown: false,
+  /** 当前挂起的隐私授权 resolve；非空表示有隐私接口在等待用户决定。 */
+  pendingPrivacyResolve: null as ((result: PrivacyAuthResolution) => void) | null,
+
   data: {
     ...SIDEBAR_DATA,
     fontSize: FONT_SIZE_DEFAULT,
     scale: 1,
+    layoutScale: 1,
     fontMin: FONT_SIZE_MIN,
     fontMax: FONT_SIZE_MAX,
     accentColor: accentColorFor(false),
@@ -167,9 +201,16 @@ Page({
     memoryError: '',
     exportPath: '',
     exportError: '',
+    exportFiles: [] as ExportRow[],
+    hasExports: false,
+    exportListError: '',
     wipeError: '',
     resultText: '',
-    labels: LABELS,
+    privacyNeedAuth: false,
+    privacyContractName: '',
+    privacyStatusText: '',
+    privacyAuthPrompt: false,
+    privacyAuthError: '',
     buttons: BUTTONS,
     a11y: A11Y,
     memory: MEMORY,
@@ -182,8 +223,122 @@ Page({
   },
 
   onShow() {
+    this.pageShown = true;
+    this.registerPrivacyResolver();
     syncSidebar(this);
     this.load();
+    this.refreshPrivacyStatus();
+    if (typeof wx.setNavigationBarColor === 'function') {
+      const hc = this.data.highContrast === true;
+      wx.setNavigationBarColor({
+        frontColor: hc ? '#ffffff' : '#000000',
+        backgroundColor: hc ? '#000000' : '#ffffff',
+      });
+    }
+  },
+
+  /** 离开本页（未销毁）：撤销挂起授权并注销解析器，隐私接口不会永久 pending。 */
+  onHide() {
+    this.pageShown = false;
+    this.finishPrivacyAuth(false, '');
+    setPrivacyAuthResolver(null);
+  },
+
+  /** 销毁本页：与 onHide 同等清理（注销解析器 + 无挂起请求）。 */
+  onUnload() {
+    this.pageShown = false;
+    this.finishPrivacyAuth(false, '');
+    setPrivacyAuthResolver(null);
+  },
+
+  // ----- 平台隐私授权（P1-26 页面侧） -----
+
+  /** 本页可见期间注册解析器：不自动同意，必须由用户轻触官方同意按钮。 */
+  registerPrivacyResolver() {
+    const resolver: PrivacyAuthResolver = (resolve) => {
+      if (!this.pageShown) {
+        resolve({ event: 'disagree' });
+        return;
+      }
+      this.finishPrivacyAuth(false, '');
+      this.pendingPrivacyResolve = resolve;
+      this.setData({ privacyAuthPrompt: true, privacyAuthError: '' });
+    };
+    setPrivacyAuthResolver(resolver);
+  },
+
+  /** 结算挂起授权；无挂起时为空操作，确保 resolve 至多调用一次。 */
+  finishPrivacyAuth(agree: boolean, buttonId: string) {
+    const resolve = this.pendingPrivacyResolve;
+    this.pendingPrivacyResolve = null;
+    if (typeof resolve !== 'function') return;
+    this.setData({ privacyAuthPrompt: false });
+    resolve(agree ? { event: 'agree', buttonId } : { event: 'disagree' });
+  },
+
+  /** 官方同意按钮回调（`open-type="agreePrivacyAuthorization"`）。 */
+  onAgreePrivacyAuthorization(event: WechatMiniprogram.CustomEvent) {
+    const buttonId = event.currentTarget.id;
+    this.finishPrivacyAuth(true, buttonId);
+    this.refreshPrivacyStatusSoon();
+  },
+
+  /** 用户拒绝本次隐私授权。 */
+  onDenyPrivacyAuthorization() {
+    this.finishPrivacyAuth(false, '');
+  },
+
+  /** 查看平台隐私保护指引全文（基础库缺失时如实提示）。 */
+  onOpenPrivacyContract() {
+    if (typeof wx.openPrivacyContract !== 'function') {
+      this.setData({ privacyAuthError: '当前基础库不支持查看隐私协议。' });
+      return;
+    }
+    try {
+      wx.openPrivacyContract({
+        fail: (err) => this.setData({ privacyAuthError: `打开隐私协议失败：${errorText(err)}` }),
+      });
+    } catch (e) {
+      this.setData({ privacyAuthError: `打开隐私协议失败：${errorText(e)}` });
+    }
+  },
+
+  /** 读取平台隐私授权状态；基础库不支持时如实说明，不崩溃。 */
+  refreshPrivacyStatus() {
+    if (typeof wx.getPrivacySetting !== 'function') {
+      this.setData({
+        privacyNeedAuth: false,
+        privacyContractName: '',
+        privacyStatusText: '当前基础库不支持隐私授权接口，页面内无法查看或发起平台隐私授权。',
+      });
+      return;
+    }
+    try {
+      wx.getPrivacySetting({
+        success: (res) => {
+          const name = typeof res.privacyContractName === 'string' ? res.privacyContractName : '';
+          this.setData({
+            privacyNeedAuth: res.needAuthorization === true,
+            privacyContractName: name,
+            privacyStatusText:
+              res.needAuthorization === true
+                ? '尚未同意平台隐私协议；涉及授权的功能（如选择图片）在你同意前不可用。'
+                : '已同意平台隐私协议，相关功能可正常使用。',
+          });
+        },
+        fail: (err) => {
+          this.setData({ privacyStatusText: `读取隐私授权状态失败：${errorText(err)}` });
+        },
+      });
+    } catch (e) {
+      this.setData({ privacyStatusText: `读取隐私授权状态失败：${errorText(e)}` });
+    }
+  },
+
+  /** 同意后平台状态可能滞后一帧，下一帧再读一次。 */
+  refreshPrivacyStatusSoon() {
+    if (typeof wx.nextTick === 'function') wx.nextTick(() => this.refreshPrivacyStatus());
+    else this.refreshPrivacyStatus();
   },
 
   /** 侧栏收起/展开：落盘偏好并回写 data。 */
@@ -198,6 +353,7 @@ Page({
     this.setData({
       fontSize: prefs.fontSize,
       scale: prefs.fontSize / FONT_SIZE_DEFAULT,
+      layoutScale: Math.min(prefs.fontSize / FONT_SIZE_DEFAULT, LAYOUT_SCALE_CAP),
       accentColor: accentColorFor(prefs.highContrast),
       highContrast: prefs.highContrast,
       aiEnabled: prefs.aiEnabled,
@@ -210,6 +366,25 @@ Page({
       hasMemories: memories.length > 0,
       memoryError: '',
     });
+    this.refreshExports();
+  },
+
+  /** 刷新已导出文件列表（导出后 / 删除后 / 清除后调用）；读取失败如实上报而非显示为空。 */
+  refreshExports() {
+    let exportFiles: ExportRow[] = [];
+    let exportListError = '';
+    try {
+      exportFiles = listExportFiles().map((file) => ({
+        name: file.name,
+        path: file.path,
+        sizeLabel: sizeLabel(file.size),
+        legacy: file.legacy === true,
+      }));
+    } catch (e) {
+      exportFiles = [];
+      exportListError = `读取导出文件失败：${errorText(e)}`;
+    }
+    this.setData({ exportFiles, hasExports: exportFiles.length > 0, exportListError });
   },
 
   /** 仅刷新记忆列表（新增/编辑/启停/删除/清空后调用）。 */
@@ -224,7 +399,11 @@ Page({
   onFontSizeChanging(event: WechatMiniprogram.SliderChanging) {
     const value = toInt(event.detail.value);
     if (Number.isNaN(value)) return;
-    this.setData({ fontSize: value, scale: value / FONT_SIZE_DEFAULT });
+    this.setData({
+      fontSize: value,
+      scale: value / FONT_SIZE_DEFAULT,
+      layoutScale: Math.min(value / FONT_SIZE_DEFAULT, LAYOUT_SCALE_CAP),
+    });
   },
 
   /** 拖动结束：写入偏好（records 负责 14–32 夹取）。 */
@@ -232,7 +411,11 @@ Page({
     const value = toInt(event.detail.value);
     if (Number.isNaN(value)) return;
     const prefs = records.preferences.update({ fontSize: value });
-    this.setData({ fontSize: prefs.fontSize, scale: prefs.fontSize / FONT_SIZE_DEFAULT });
+    this.setData({
+      fontSize: prefs.fontSize,
+      scale: prefs.fontSize / FONT_SIZE_DEFAULT,
+      layoutScale: Math.min(prefs.fontSize / FONT_SIZE_DEFAULT, LAYOUT_SCALE_CAP),
+    });
     if (typeof wx.vibrateShort === 'function') wx.vibrateShort({ type: 'light' });
   },
 
@@ -240,6 +423,12 @@ Page({
     const highContrast = event.detail.value === true;
     records.preferences.update({ highContrast });
     this.setData({ highContrast, accentColor: accentColorFor(highContrast) });
+    if (typeof wx.setNavigationBarColor === 'function') {
+      wx.setNavigationBarColor({
+        frontColor: highContrast ? '#ffffff' : '#000000',
+        backgroundColor: highContrast ? '#000000' : '#ffffff',
+      });
+    }
   },
 
   // ----- AI 外部调用 -----
@@ -393,7 +582,7 @@ Page({
 
   // ----- 数据 -----
 
-  /** 导出全部：文字记录 + 附件名称/路径引用，写入 USER_DATA_PATH，无网络。 */
+  /** 导出全部：文字记录 + 附件名称/路径引用，写入固定的 exports/mhp_export.json，无网络。 */
   onExport() {
     this.setData({ exportPath: '', exportError: '' });
     let payload: Dict;
@@ -403,14 +592,22 @@ Page({
       this.setData({ exportError: errorText(err) });
       return;
     }
+    try {
+      ensureExportsDir();
+    } catch (err) {
+      this.setData({ exportError: errorText(err) });
+      if (typeof wx.showToast === 'function') wx.showToast({ title: EXPORT.failedHint, icon: 'none' });
+      return;
+    }
     const json = JSON.stringify(payload, null, 2);
-    const filePath = `${wx.env.USER_DATA_PATH}/mhp_export_${Date.now()}.json`;
+    const filePath = exportFilePath();
     wx.getFileSystemManager().writeFile({
       filePath,
       data: json,
       encoding: 'utf8',
       success: () => {
         oplog.append('export', filePath);
+        this.refreshExports();
         this.setData({ exportPath: filePath, resultText: `已导出到：${filePath}` });
         if (typeof wx.showToast === 'function') wx.showToast({ title: EXPORT.doneHint, icon: 'success' });
       },
@@ -419,6 +616,53 @@ Page({
         if (typeof wx.showToast === 'function') wx.showToast({ title: EXPORT.failedHint, icon: 'none' });
       },
     });
+  },
+
+  /** 删除单个导出文件（应用内可见、可删，闭合 P0-5 的「清除后不可发现」）。 */
+  onDeleteExport(event: WechatMiniprogram.TouchEvent) {
+    const path = event.currentTarget.dataset.path;
+    if (typeof path !== 'string' || path === '') return;
+    const doDelete = () => {
+      const removed = deleteExport(path);
+      this.refreshExports();
+      const title = removed ? EXPORT.deleteExportDone : EXPORT.deleteFailedHint;
+      if (typeof wx.showToast === 'function') wx.showToast({ title, icon: removed ? 'none' : 'none' });
+    };
+    if (typeof wx.showModal === 'function') {
+      wx.showModal({
+        title: EXPORT.deleteExportTitle,
+        content: EXPORT.deleteExportConfirm,
+        success: (res) => {
+          if (res.confirm) doDelete();
+        },
+      });
+    } else {
+      doDelete();
+    }
+  },
+
+  /** 清空全部导出文件。 */
+  onClearExports() {
+    const doClear = () => {
+      const result = clearExports();
+      this.refreshExports();
+      if (result.failed > 0) {
+        if (typeof wx.showToast === 'function') wx.showToast({ title: WIPE.partialFailureHint, icon: 'none' });
+        return;
+      }
+      if (typeof wx.showToast === 'function') wx.showToast({ title: EXPORT.clearExportsDone, icon: 'none' });
+    };
+    if (typeof wx.showModal === 'function') {
+      wx.showModal({
+        title: EXPORT.clearExports,
+        content: EXPORT.clearExportsConfirm,
+        success: (res) => {
+          if (res.confirm) doClear();
+        },
+      });
+    } else {
+      doClear();
+    }
   },
 
   /** 清除所有本地资料：两步确认。 */
@@ -446,9 +690,21 @@ Page({
     });
   },
 
+  /** 组装清除结果文案：如实区分 Storage 键 / 附件文件 / 导出文件，并报告删除失败数。 */
+  wipeResultText(keys: number, legacy: number, attachments: number, exportsCount: number, failed: number): string {
+    const parts = [
+      `${WIPE.resultKeysLabel} ${keys} ${WIPE.resultUnit}`,
+      `${WIPE.resultLegacyLabel} ${legacy} ${WIPE.resultUnit}`,
+      `${WIPE.resultAttachmentsLabel} ${attachments} ${WIPE.resultUnit}`,
+      `${WIPE.resultExportsLabel} ${exportsCount} ${WIPE.resultUnit}`,
+    ];
+    const head = `已清除：${parts.join(WIPE.resultSeparator)}。`;
+    return failed > 0 ? `${head}${WIPE.partialFailureHint}（${failed} ${WIPE.resultUnit}）` : head;
+  },
+
   /**
    * 执行清除。任一步抛错即中止并保留现状（可重试）；成功则回读默认值并给出计数。
-   * 顺序：记录 → 旧命名空间 → 附件目录 → 审计日志。
+   * 顺序：记录键 → 旧命名空间 → 附件文件 → 导出文件 → 审计日志。删除失败如实报告。
    */
   performWipe() {
     this.setData({ wipeError: '', resultText: '', exportPath: '', exportError: '' });
@@ -456,13 +712,23 @@ Page({
       const removedRecords = deleteAll();
       const purgedLegacy = storage.purgeLegacy();
       const clearedFiles = clearAttachments();
+      const clearedExports = clearExports();
+      const failed = clearedFiles.failed + clearedExports.failed;
       oplog.append('clear', 'all');
       this.load();
-      this.setData({
-        memoryDraft: '',
-        editingId: '',
-        resultText: `已清除：本地记录 ${removedRecords} 项、旧数据 ${purgedLegacy} 项、附件文件 ${clearedFiles} 个。`,
-      });
+      const resultText = this.wipeResultText(
+        removedRecords,
+        purgedLegacy,
+        clearedFiles.removed,
+        clearedExports.removed,
+        failed
+      );
+      this.setData({ memoryDraft: '', editingId: '', resultText });
+      if (failed > 0) {
+        this.setData({ wipeError: WIPE.partialFailureHint });
+        if (typeof wx.showToast === 'function') wx.showToast({ title: WIPE.partialFailureHint, icon: 'none' });
+        return;
+      }
       if (typeof wx.showToast === 'function') wx.showToast({ title: WIPE.doneHint, icon: 'none' });
     } catch (err) {
       this.setData({ wipeError: errorText(err), resultText: '' });

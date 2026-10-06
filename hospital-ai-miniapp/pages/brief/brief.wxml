@@ -1,7 +1,7 @@
 <!-- pages/brief/brief.wxml — 就医摘要（任务 20）。
      无障碍：根节点内联 --mhp-scale 与 is-hc，消费任务 16 的全局缩放/高对比机制。
      区分「用户原话/整理内容/待医生确认」由编辑区说明行承担（文案来自 config/texts.ts）。 -->
-<view class="brief app-shell {{highContrast ? 'is-hc' : ''}} {{sidebarCollapsed ? 'is-collapsed' : ''}}" style="--mhp-scale: {{scale}}">
+<view class="brief app-shell {{highContrast ? 'is-hc' : ''}} {{sidebarCollapsed ? 'is-collapsed' : ''}}" style="--mhp-scale: {{scale}}; --mhp-layout-scale: {{layoutScale}}">
   <app-sidebar current="brief" collapsed="{{sidebarCollapsed}}" scale="{{scale}}" bind:toggle="onSidebarToggle" />
   <view class="hero">
     <text class="hero__title">{{copy.title}}</text>
@@ -14,8 +14,8 @@
       <text class="select__count">{{copy.selectedPrefix}} {{selectedCount}} {{copy.selectedUnit}}</text>
     </view>
     <view class="select__tools">
-      <view class="btn btn--ghost" bindtap="onSelectAll">{{copy.selectAll}}</view>
-      <view class="btn btn--ghost" bindtap="onClearSelection">{{copy.clearSelection}}</view>
+      <view class="btn btn--ghost" bindtap="onSelectAll" aria-role="button" aria-label="{{copy.selectAll}}">{{copy.selectAll}}</view>
+      <view class="btn btn--ghost" bindtap="onClearSelection" aria-role="button" aria-label="{{copy.clearSelection}}">{{copy.clearSelection}}</view>
     </view>
 
     <view class="profile" wx:if="{{profileAvailable}}">
@@ -32,6 +32,9 @@
         wx:key="id"
         data-id="{{item.id}}"
         bindtap="onToggleSymptom"
+        aria-role="checkbox"
+        aria-checked="{{item.selected}}"
+        aria-label="{{item.title}}"
       >
         <view class="row__check {{item.selected ? 'is-on' : ''}}"></view>
         <view class="row__body">
@@ -50,6 +53,9 @@
         wx:key="id"
         data-id="{{item.id}}"
         bindtap="onToggleNote"
+        aria-role="checkbox"
+        aria-checked="{{item.selected}}"
+        aria-label="{{item.title}}"
       >
         <view class="row__check {{item.selected ? 'is-on' : ''}}"></view>
         <view class="row__body">
@@ -68,6 +74,9 @@
         wx:key="id"
         data-id="{{item.id}}"
         bindtap="onToggleQuestion"
+        aria-role="checkbox"
+        aria-checked="{{item.selected}}"
+        aria-label="{{item.title}}"
       >
         <view class="row__check {{item.selected ? 'is-on' : ''}}"></view>
         <view class="row__body">
@@ -85,7 +94,7 @@
   </view>
 
   <view class="generate">
-    <view class="btn btn--primary" bindtap="onGenerate">{{copy.generate}}</view>
+    <view class="btn btn--primary" bindtap="onGenerate" aria-role="button" aria-label="{{copy.generate}}">{{copy.generate}}</view>
   </view>
 
   <text class="notice mhp-error" wx:if="{{errorText}}">{{errorText}}</text>
@@ -103,10 +112,23 @@
       maxlength="-1"
     />
     <view class="editor__actions">
-      <view class="btn btn--primary" bindtap="onSave">{{buttons.save}}</view>
-      <view class="btn btn--ghost" bindtap="onCopy">{{buttons.copy}}</view>
+      <view class="btn btn--primary" bindtap="onSave" aria-role="button" aria-label="{{buttons.save}}">{{buttons.save}}</view>
+      <view class="btn btn--ghost" bindtap="onCopy" aria-role="button" aria-label="{{buttons.copy}}">{{buttons.copy}}</view>
     </view>
     <text class="editor__saved" wx:if="{{savedAt}}">{{copy.savedAtPrefix}}：{{savedAt}}</text>
+  </view>
+
+  <view class="select" wx:if="{{hasSavedBriefs}}">
+    <text class="select__title">{{copy.savedListTitle}}</text>
+    <view class="row" wx:for="{{savedBriefs}}" wx:key="id">
+      <view class="row__body">
+        <text class="row__title">{{item.preview}}</text>
+        <text class="row__meta">{{copy.savedTimeLabel}} {{item.savedLabel}}</text>
+        <text class="row__meta" wx:if="{{item.exportedLabel}}">{{copy.savedAtPrefix}} {{item.exportedLabel}}</text>
+      </view>
+      <view class="btn btn--ghost" data-id="{{item.id}}" bindtap="onOpenBrief" aria-role="button" aria-label="{{copy.open}}">{{copy.open}}</view>
+      <view class="btn btn--ghost" data-id="{{item.id}}" bindtap="onDeleteBrief" aria-role="button" aria-label="删除这段摘要">{{buttons.delete}}</view>
+    </view>
   </view>
 
   <view class="poster">
@@ -117,11 +139,12 @@
       <text class="mhp-loading__text">{{poster.exporting}}</text>
     </view>
     <view class="poster__actions">
-      <view class="btn btn--primary" bindtap="onExportImage">{{poster.exportImage}}</view>
-      <view class="btn btn--ghost" wx:if="{{previewPath}}" bindtap="onSaveImage">{{poster.saveImage}}</view>
-      <button class="btn btn--ghost poster__share" open-type="share" wx:if="{{previewPath}}">{{poster.share}}</button>
+      <view class="btn btn--primary" bindtap="onExportImage" aria-role="button" aria-label="{{poster.exportImage}}">{{poster.exportImage}}</view>
+      <view class="btn btn--ghost" wx:if="{{previewPath}}" bindtap="onSaveImage" aria-role="button" aria-label="{{poster.saveImage}}">{{poster.saveImage}}</view>
+      <button class="btn btn--ghost poster__share" open-type="share" wx:if="{{previewPath}}" aria-label="{{poster.share}}">{{poster.share}}</button>
     </view>
     <image class="poster__preview" wx:if="{{previewPath}}" src="{{previewPath}}" mode="widthFix" />
+    <text class="notice mhp-error" wx:if="{{posterOverflow}}">{{poster.overflowHint}}</text>
   </view>
 
   <canvas type="2d" id="briefPoster" class="poster__canvas"></canvas>

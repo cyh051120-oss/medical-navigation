@@ -340,6 +340,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-height: 88rpx;
   padding: var(--mhp-space-5) var(--mhp-space-8);
   border-radius: var(--radius-md);
   text-align: center;

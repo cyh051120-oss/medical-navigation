@@ -53,6 +53,7 @@
 // before the previous `updatedAt`, the previous value is reused.
 
 import * as storage from '../utils/storage';
+import { isCanonicalIso } from '../utils/time';
 
 /** Raw storage keys (without the `mhp_` namespace prefix). */
 export const ENTITY_KEYS = {
@@ -94,8 +95,13 @@ export interface LocalProfile extends BaseRecord {
 
 /** Symptom timeline entry. Task 17. NO severity field by design. */
 export interface SymptomEntry extends BaseRecord {
-  /** 发生时间 (ISO) */
+  /** 发生时间 (canonical ISO 8601; '' when unknown / omitted) */
   occurredAt: string;
+  /**
+   * 发生时间的原话（仅当输入无法规范化为 ISO 时保留，如「昨天晚上」）。
+   * 与 `occurredAt` 互斥：规范化写入时只要有合法 ISO，本字段即被删除。
+   */
+  occurredAtText?: string;
   /** 持续时长 */
   duration: string;
   /** 原话 (required, non-empty) */
@@ -233,8 +239,19 @@ function nonDecreasingTs(prev: string | undefined, next: string): string {
   return next;
 }
 
+/** Tolerant read for display paths (get/list); a read error degrades to empty. */
 function readAll<T extends BaseRecord>(key: string): T[] {
   const val = storage.get<T[]>(key, []);
+  return Array.isArray(val) ? val : [];
+}
+
+/**
+ * Strict read for read-modify-write paths (add/update/remove): a read error
+ * propagates instead of being mistaken for an empty entity, which would
+ * otherwise overwrite every existing record on the next write (P1-17).
+ */
+function readAllStrict<T extends BaseRecord>(key: string): T[] {
+  const val = storage.getStrict<T[]>(key, []);
   return Array.isArray(val) ? val : [];
 }
 
@@ -266,6 +283,8 @@ interface StoreSpec<T extends BaseRecord, D> {
   prefix: string;
   /** Enforce 0..1 records (profile). */
   singleton?: boolean;
+  /** Optional field normalizer; runs before validation on every write. */
+  normalize?: (data: Dict) => Dict;
   /** Optional validator; called with the full data object after merge on update. */
   validate?: (data: Dict) => void;
 }
@@ -288,24 +307,25 @@ export interface EntityStore<T extends BaseRecord, D> {
 }
 
 function buildStore<T extends BaseRecord, D>(spec: StoreSpec<T, D>): EntityStore<T, D> {
-  const { name, key, prefix, singleton, validate } = spec;
+  const { name, key, prefix, singleton, normalize, validate } = spec;
 
   function add(data: D): T {
-    if (validate) validate(data as unknown as Dict);
+    const normalized = normalize ? normalize(data as unknown as Dict) : (data as unknown as Dict);
+    if (validate) validate(normalized);
     const ts = nowIso();
     const record = {
-      ...(data as object),
+      ...(normalized as object),
       id: makeId(prefix),
       createdAt: ts,
       updatedAt: ts,
     } as unknown as T;
-    const list = readAll<T>(key);
+    const list = readAllStrict<T>(key);
     writeAll<T>(key, singleton ? [record] : list.concat(record));
     return record;
   }
 
   function update(id: string, patch: Partial<D>): T {
-    const list = readAll<T>(key);
+    const list = readAllStrict<T>(key);
     const index = list.findIndex((record) => record.id === id);
     if (index === -1) {
       throw new Error(
@@ -314,9 +334,10 @@ function buildStore<T extends BaseRecord, D>(spec: StoreSpec<T, D>): EntityStore
     }
     const prev = list[index];
     const merged = { ...(prev as object), ...(patch as object) } as Dict;
-    if (validate) validate(merged);
+    const normalized = normalize ? normalize(merged) : merged;
+    if (validate) validate(normalized);
     const next = {
-      ...merged,
+      ...(normalized as object),
       id: prev.id,
       createdAt: prev.createdAt,
       updatedAt: nonDecreasingTs(prev.updatedAt, nowIso()),
@@ -328,7 +349,7 @@ function buildStore<T extends BaseRecord, D>(spec: StoreSpec<T, D>): EntityStore
   }
 
   function remove(id: string): boolean {
-    const list = readAll<T>(key);
+    const list = readAllStrict<T>(key);
     const nextList = list.filter((record) => record.id !== id);
     if (nextList.length === list.length) return false;
     writeAll<T>(key, nextList);
@@ -357,10 +378,30 @@ function validateSymptom(data: Dict): void {
   }
 }
 
+/**
+ * Enforce the `occurredAt` contract on every write: `occurredAt` stays a
+ * canonical ISO string ('' when unknown), and any non-ISO input is moved to
+ * `occurredAtText`. A canonical ISO always wins and clears stale free text.
+ */
+function normalizeSymptomTiming(data: Dict): Dict {
+  const next: Dict = { ...data };
+  const raw = next.occurredAt;
+  if (isCanonicalIso(raw)) {
+    delete next.occurredAtText;
+    return next;
+  }
+  if (typeof raw === 'string' && raw.trim() !== '') {
+    next.occurredAtText = raw;
+  }
+  next.occurredAt = '';
+  return next;
+}
+
 export const symptoms = buildStore<SymptomEntry, SymptomInput>({
   name: 'symptoms',
   key: ENTITY_KEYS.symptoms,
   prefix: 'sym',
+  normalize: normalizeSymptomTiming,
   validate: validateSymptom,
 });
 
@@ -500,8 +541,10 @@ export const memory: EntityStore<MemoryItem, MemoryInput> = {
 // AppPreferences (singleton, key/value — not a record list).
 // ---------------------------------------------------------------------------
 
-function readPreferences(): AppPreferences {
-  const raw = storage.get<Partial<AppPreferences>>(ENTITY_KEYS.preferences, null);
+function readPreferences(strict = false): AppPreferences {
+  const raw = strict
+    ? storage.getStrict<Partial<AppPreferences>>(ENTITY_KEYS.preferences, null)
+    : storage.get<Partial<AppPreferences>>(ENTITY_KEYS.preferences, null);
   if (raw === null || typeof raw !== 'object') {
     return { ...DEFAULT_PREFERENCES };
   }
@@ -535,7 +578,7 @@ export const preferences: PreferencesStore = {
   },
 
   update(patch: PreferencesPatch): AppPreferences {
-    const current = readPreferences();
+    const current = readPreferences(true);
     const ts = nowIso();
     const next: AppPreferences = {
       aiEnabled: patch.aiEnabled === undefined ? current.aiEnabled : patch.aiEnabled === true,
