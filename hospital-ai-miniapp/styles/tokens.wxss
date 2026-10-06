@@ -1,0 +1,85 @@
+/* styles/tokens.wxss — 单一设计令牌来源（任务 41）。
+   色板 / 字阶 / 间距 / 圆角 / 阴影 / 动效时长 全部在此定义；app.wxss 用 @import 引入，
+   页面一律消费 var(--*)，不得再写裸色值。
+
+   缩放与高对比是任务 16 的既有契约，仍由 app.wxss 保留：
+     - --mhp-scale 由 shared/ui/a11y.ts 写到页面根节点，所有字号写 calc(Nrpx * var(--mhp-scale))；
+     - .is-hc 把 --mhp-hc-* 映射到语义色。本文件只提供（不消费）HC 令牌。
+
+   注意：字号四档刻意不在这里定义成 var()，而是让页面内联
+   calc(Nrpx * var(--mhp-scale))。既有 a11y 规范（tests/e2e/a11y.spec.mjs 等）用
+   /calc\([^)]*var\(--mhp-scale\)\)/ 逐行扫描 wxss，嵌套 var() 会破坏该正则。 */
+page {
+  /* ===== Palette · surface ===== */
+  --bg-main: #F4F6F9;
+  --bg-card: #FFFFFF;
+
+  /* ===== Palette · brand / semantic ===== */
+  --color-primary: #2A4FD7;
+  --color-primary-hover: #1b39b2;
+  --color-danger: #F53F3F;
+  --color-success: #00B42A;
+
+  /* ===== Palette · text =====
+     --text-caption 由 #86909C 调整为 #636D7C：原值在 #F4F6F9 / #FFFFFF 上仅
+     2.99:1 / 3.24:1，低于正文可读性门槛；新值 4.84:1 / 5.24:1（任务 41，对比度见
+     artifacts/screenshots/style-refactor/index.json）。 */
+  --text-title: #1D2129;
+  --text-body: #4E5969;
+  --text-caption: #636D7C;
+
+  /* ===== Palette · high contrast（任务 12/16；由 .is-hc 启用） ===== */
+  --mhp-hc-bg: #000000;
+  --mhp-hc-surface: #1A1A1A;
+  --mhp-hc-text: #FFFFFF;
+  --mhp-hc-accent: #FFD400;
+  --mhp-hc-border: #FFFFFF;
+
+  /* ===== Type scale（四档版式层级，任务 41）=====
+     页面标题   44rpx  lh var(--mhp-lh-title)   fw 600  color --text-title
+     区块标题   32rpx  lh var(--mhp-lh-title)   fw 600  color --text-title
+     正文       28rpx  lh var(--mhp-lh-body)    fw 400  color --text-body
+     辅助文本   24rpx  lh var(--mhp-lh-caption) fw 400  color --text-caption
+     仅尺寸（非文字层级）：统计数值 40rpx；空态徽标图标尺寸见 app.wxss（.mhp-empty__badge .mhp-ico）。 */
+  --mhp-lh-title: 1.3;
+  --mhp-lh-body: 1.6;
+  --mhp-lh-caption: 1.5;
+  --mhp-fw-regular: 400;
+  --mhp-fw-medium: 500;
+  --mhp-fw-semibold: 600;
+
+  /* ===== Spacing scale（4rpx 网格；结构间距的唯一来源） ===== */
+  --mhp-space-1: 4rpx;
+  --mhp-space-2: 8rpx;
+  --mhp-space-3: 12rpx;
+  --mhp-space-4: 16rpx;
+  --mhp-space-5: 20rpx;
+  --mhp-space-6: 24rpx;
+  --mhp-space-7: 28rpx;
+  --mhp-space-8: 32rpx;
+  --mhp-space-9: 40rpx;
+  --mhp-space-10: 48rpx;
+  --mhp-space-11: 64rpx;
+  --mhp-space-12: 96rpx;
+
+  /* ===== Radii ===== */
+  --radius-xs: 10rpx;
+  --radius-sm: 16rpx;
+  --radius-md: 24rpx;
+  --radius-lg: 40rpx;
+  --radius-xl: 60rpx;
+
+  /* ===== Elevation ===== */
+  --shadow-sm: 0 4rpx 10rpx rgba(29, 33, 41, 0.04);
+  --shadow-md: 0 10rpx 30rpx rgba(29, 33, 41, 0.05);
+  --shadow-lg: 0 24rpx 64rpx rgba(29, 33, 41, 0.08);
+  --shadow-neon: 0 16rpx 40rpx rgba(42, 79, 215, 0.25);
+
+  /* ===== Motion ===== */
+  --motion-fast: 120ms;
+  --motion-normal: 240ms;
+  --motion-slow: 360ms;
+  --motion-spin: 900ms;
+  --ease-standard: ease;
+  --ease-emphasized: cubic-bezier(0.2, 0.8, 0.2, 1);
+}

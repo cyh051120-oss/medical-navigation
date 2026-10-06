@@ -1,0 +1,37 @@
+// shared/ui/nav.ts — 全局左侧导航栏的唯一数据源（重构：左侧栏）。
+//
+// 侧栏承载全部 8 个页面：工作台 / 个人档案 / 症状记录 / 资料摘录 / 待问清单 /
+// 就医摘要 / AI 助手 / 设置。路由、标签与图标集中在此，避免侧栏与各页入口
+// 各写一份而漂移。
+//
+// icon 名称对应 styles/icons.wxss 的 `.mhp-ico--<icon>`（Lucide 矢量图标）。
+// route 为不带前导斜杠的相对路径；跳转时统一补 `/`。
+
+/** 一个左侧栏导航项。 */
+export interface NavItem {
+  /** 稳定标识；页面用同名 key 传给侧栏以高亮当前项。 */
+  key: string;
+  /** 中文标签。 */
+  label: string;
+  /** 图标名，对应 `.mhp-ico--<icon>`。 */
+  icon: string;
+  /** 相对路由，不带前导斜杠。 */
+  route: string;
+}
+
+/** 8 个页面的固定顺序（工作台在最前）。 */
+export const NAV_ITEMS: readonly NavItem[] = [
+  { key: 'home', label: '工作台', icon: 'house', route: 'pages/home/home' },
+  { key: 'profile', label: '个人档案', icon: 'user', route: 'pages/profile/profile' },
+  { key: 'symptoms', label: '症状记录', icon: 'stethoscope', route: 'pages/symptoms/symptoms' },
+  { key: 'notes', label: '资料摘录', icon: 'file-text', route: 'pages/notes/notes' },
+  {
+    key: 'questions',
+    label: '待问清单',
+    icon: 'message-circle-question',
+    route: 'pages/questions/questions',
+  },
+  { key: 'brief', label: '就医摘要', icon: 'clipboard-list', route: 'pages/brief/brief' },
+  { key: 'ai', label: 'AI 助手', icon: 'wand-sparkles', route: 'pages/ai/ai' },
+  { key: 'settings', label: '设置', icon: 'settings', route: 'pages/settings/settings' },
+] as const;

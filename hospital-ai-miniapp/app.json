@@ -1,0 +1,29 @@
+{
+  "pages": [
+    "pages/home/home",
+    "pages/profile/profile",
+    "pages/symptoms/symptoms",
+    "pages/notes/notes",
+    "pages/questions/questions",
+    "pages/brief/brief",
+    "pages/ai/ai",
+    "pages/settings/settings"
+  ],
+  "window": {
+    "backgroundTextStyle": "dark",
+    "navigationBarBackgroundColor": "#FFFFFF",
+    "navigationBarTitleText": "就医准备助手",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#F7F8FA"
+  },
+  "style": "v2",
+  "usingComponents": {
+    "app-sidebar": "/components/app-sidebar/app-sidebar"
+  },
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents",
+  "networkTimeout": {
+    "request": 120000,
+    "downloadFile": 120000
+  }
+}

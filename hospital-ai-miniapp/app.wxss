@@ -1,0 +1,178 @@
+/**app.wxss**/
+/* 任务 41：设计令牌集中在 styles/tokens.wxss，这里只 @import 并保留任务 16 的
+   缩放/高对比契约（--mhp-scale 与 .is-hc 映射必须留在本文件：a11y 规范扫描本文件）。 */
+@import './styles/tokens.wxss';
+@import './styles/icons.wxss';
+
+page {
+  /* 现代背景质感 */
+  background-color: var(--bg-main);
+  /* 首选无衬线字体，增强西文与数字观感 */
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  height: 100%;
+  -webkit-font-smoothing: antialiased;
+
+  /* 任务 12/16：全局缩放基准；由 shared/ui/a11y.ts 写入页面根节点覆盖
+     （scale = fontSize / 14），所有页面字号统一写 calc(Nrpx * var(--mhp-scale))。 */
+  --mhp-scale: 1;
+}
+
+/* 任务 16：全局高对比入口。任意页面根节点加 `is-hc` 即把高对比令牌映射到语义令牌，
+   页面内所有 color/background 经 var(--*) 自动切换，无需逐页重写。
+   settings.wxss 保留 `.settings.is-hc` 等价作用域块以兼容既有契约（值相同）。 */
+.is-hc {
+  --bg-main: var(--mhp-hc-bg);
+  --bg-card: var(--mhp-hc-surface);
+  --text-title: var(--mhp-hc-text);
+  --text-body: var(--mhp-hc-text);
+  --text-caption: var(--mhp-hc-text);
+  --color-primary: var(--mhp-hc-accent);
+  --color-danger: var(--mhp-hc-accent);
+}
+
+.container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+/* ===========================================================================
+   左侧导航栏布局（前端重构）。
+   8 个页面根节点加 `.app-shell`，并带 `{{sidebarCollapsed ? 'is-collapsed' : ''}}`；
+   侧栏组件（app-sidebar）固定定位，页面根节点用 margin-left: var(--mhp-sidebar-w)
+   为其让位——页面背景与 page 背景同色，故左侧让位区无可见接缝。
+   宽度随全局字号缩放（a11y 契约）；展开 248rpx、收起 96rpx，与组件内 .sb 保持一致。
+   像素一律 rpx：a11y 静态扫描要求 app.wxss 与 8 页 wxss 零裸 px。
+   =========================================================================== */
+
+.app-shell {
+  --mhp-sidebar-w: calc(248rpx * var(--mhp-scale));
+  margin-left: var(--mhp-sidebar-w);
+  transition: margin-left var(--motion-normal) var(--ease-standard);
+}
+
+.app-shell.is-collapsed {
+  --mhp-sidebar-w: calc(96rpx * var(--mhp-scale));
+}
+
+/* ===========================================================================
+   任务 41：共享状态样式（空态 / 加载 / 错误）。
+   一套类在 8 个页面复用；页面只负责自己的布局类，状态外观一律来自这里。
+   =========================================================================== */
+
+/* ----- 空态 ----- */
+.mhp-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--mhp-space-12) var(--mhp-space-10) var(--mhp-space-8);
+}
+
+.mhp-empty--card {
+  align-items: stretch;
+  padding: var(--mhp-space-10) var(--mhp-space-8);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-sm);
+  text-align: center;
+}
+
+.mhp-empty--inline {
+  align-items: stretch;
+  margin: var(--mhp-space-6) 0;
+  padding: var(--mhp-space-8) var(--mhp-space-6);
+  border-radius: var(--radius-md);
+  background: var(--bg-main);
+}
+
+.mhp-empty__badge {
+  width: 108rpx;
+  height: 108rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--bg-card);
+  background: var(--color-primary);
+  opacity: 0.9;
+}
+
+.mhp-empty__badge .mhp-ico {
+  width: calc(48rpx * var(--mhp-scale));
+  height: calc(48rpx * var(--mhp-scale));
+}
+
+.mhp-empty__text {
+  display: block;
+  margin: var(--mhp-space-6) 0 var(--mhp-space-8);
+  font-size: calc(28rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-body);
+  color: var(--text-body);
+  text-align: center;
+}
+
+.mhp-empty--card .mhp-empty__text,
+.mhp-empty--inline .mhp-empty__text {
+  margin-top: var(--mhp-space-4);
+  margin-bottom: var(--mhp-space-3);
+}
+
+.mhp-empty__action {
+  margin-top: var(--mhp-space-4);
+}
+
+/* ----- 错误 ----- */
+.mhp-error {
+  display: block;
+  font-size: calc(24rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-caption);
+  color: var(--color-danger);
+}
+
+.mhp-error--boxed {
+  margin-bottom: var(--mhp-space-6);
+  padding: var(--mhp-space-4) var(--mhp-space-6);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-sm);
+  border: 2rpx solid var(--color-danger);
+}
+
+.mhp-error__text {
+  display: block;
+  font-size: calc(24rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-caption);
+  color: var(--color-danger);
+}
+
+/* ----- 加载 ----- */
+.mhp-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--mhp-space-3);
+  padding: var(--mhp-space-6) 0;
+}
+
+.mhp-loading__spinner {
+  width: 32rpx;
+  height: 32rpx;
+  box-sizing: border-box;
+  border: 4rpx solid var(--bg-main);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: mhp-spin var(--motion-spin) linear infinite;
+}
+
+.mhp-loading__text {
+  font-size: calc(24rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-caption);
+  color: var(--text-caption);
+}
+
+@keyframes mhp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

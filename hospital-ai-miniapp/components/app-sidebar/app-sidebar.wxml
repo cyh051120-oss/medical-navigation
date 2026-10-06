@@ -1,0 +1,27 @@
+<!-- components/app-sidebar/app-sidebar.wxml — 全局可折叠左侧导航栏。
+     scale 属性写入根节点 --mhp-scale；固定定位，页面内容经 app.wxss 让位。 -->
+<view class="sb {{collapsed ? 'sb--collapsed' : ''}}" style="--mhp-scale: {{scale}}">
+  <view class="sb__brand">
+    <view class="mhp-ico mhp-ico--clipboard-list sb__brand-ico"></view>
+    <text class="sb__brand-text" wx:if="{{!collapsed}}">就医准备</text>
+  </view>
+
+  <scroll-view class="sb__nav" scroll-y>
+    <view
+      class="sb__item {{item.key === current ? 'is-active' : ''}}"
+      wx:for="{{items}}"
+      wx:key="key"
+      data-key="{{item.key}}"
+      data-route="{{item.route}}"
+      bindtap="onTapItem"
+    >
+      <view class="mhp-ico mhp-ico--{{item.icon}} sb__item-ico"></view>
+      <text class="sb__item-label" wx:if="{{!collapsed}}">{{item.label}}</text>
+    </view>
+  </scroll-view>
+
+  <view class="sb__toggle" bindtap="onToggle">
+    <text class="sb__toggle-chev">{{collapsed ? '»' : '«'}}</text>
+    <text class="sb__toggle-label" wx:if="{{!collapsed}}">收起</text>
+  </view>
+</view>
