@@ -1,0 +1,185 @@
+/* pages/profile/profile.wxss — 最小个人档案（任务 14）。
+   任务 41：只消费 styles/tokens.wxss；字号四档统一；错误态复用 app.wxss 的 .mhp-error。 */
+
+.profile {
+  min-height: 100%;
+  box-sizing: border-box;
+  padding: var(--mhp-space-6) var(--mhp-space-7) var(--mhp-space-11);
+  background: var(--bg-main);
+  color: var(--text-body);
+}
+
+/* page title tier */
+.profile-hero {
+  padding: var(--mhp-space-4) var(--mhp-space-2) var(--mhp-space-7);
+}
+
+.profile-hero__title {
+  display: block;
+  font-size: calc(44rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-title);
+  font-weight: var(--mhp-fw-semibold);
+  color: var(--text-title);
+}
+
+/* caption tier */
+.profile-hero__sub {
+  display: block;
+  margin-top: var(--mhp-space-3);
+  font-size: calc(24rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-caption);
+  color: var(--text-caption);
+}
+
+.profile-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--mhp-space-3) var(--mhp-space-8);
+  margin-bottom: var(--mhp-space-7);
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: var(--mhp-space-5);
+  padding: var(--mhp-space-6) 0;
+  border-bottom: 2rpx solid var(--bg-main);
+}
+
+.field:last-child {
+  border-bottom: none;
+}
+
+.field--block {
+  display: block;
+}
+
+/* caption tier */
+.field__label {
+  flex: none;
+  width: 150rpx;
+  font-size: calc(24rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-caption);
+  color: var(--text-caption);
+}
+
+.field--block .field__label {
+  display: block;
+  width: auto;
+  margin-bottom: var(--mhp-space-4);
+}
+
+/* body tier */
+.field__input {
+  flex: 1;
+  min-width: 0;
+  height: 64rpx;
+  font-size: calc(28rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-body);
+  color: var(--text-body);
+}
+
+.field__picker {
+  flex: 1;
+  padding: var(--mhp-space-4) var(--mhp-space-6);
+  border-radius: var(--radius-sm);
+  font-size: calc(28rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-body);
+  color: var(--text-caption);
+  background: var(--bg-main);
+}
+
+.field__picker.is-filled {
+  color: var(--color-primary);
+}
+
+.gender {
+  display: flex;
+  flex: 1;
+  gap: var(--mhp-space-5);
+}
+
+.gender__btn {
+  flex: 1;
+  padding: var(--mhp-space-4) 0;
+  border-radius: var(--radius-sm);
+  text-align: center;
+  font-size: calc(28rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-body);
+  color: var(--text-body);
+  background: var(--bg-main);
+}
+
+.gender__btn.is-active {
+  color: var(--bg-card);
+  background: var(--color-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.field__textarea {
+  width: 100%;
+  min-height: 140rpx;
+  box-sizing: border-box;
+  padding: var(--mhp-space-6);
+  border-radius: var(--radius-sm);
+  font-size: calc(28rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-body);
+  color: var(--text-body);
+  background: var(--bg-main);
+}
+
+.profile-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mhp-space-5);
+}
+
+/* body tier */
+.btn {
+  padding: var(--mhp-space-6) 0;
+  border-radius: var(--radius-md);
+  text-align: center;
+  font-size: calc(28rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-body);
+  font-weight: var(--mhp-fw-semibold);
+}
+
+.btn--primary {
+  color: var(--bg-card);
+  background: var(--color-primary);
+  box-shadow: var(--shadow-neon);
+}
+
+.btn--danger {
+  color: var(--color-danger);
+  background: var(--bg-card);
+  border: 2rpx solid var(--color-danger);
+}
+
+.profile-meta {
+  margin-top: var(--mhp-space-7);
+  padding: var(--mhp-space-6) var(--mhp-space-8);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-sm);
+}
+
+.profile-meta__row {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--mhp-space-2) 0;
+}
+
+/* caption tier */
+.profile-meta__label {
+  font-size: calc(24rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-caption);
+  color: var(--text-caption);
+}
+
+.profile-meta__value {
+  font-size: calc(24rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-caption);
+  color: var(--text-body);
+}

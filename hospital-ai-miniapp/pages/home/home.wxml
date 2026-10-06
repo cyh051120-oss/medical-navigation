@@ -1,0 +1,92 @@
+<!-- pages/home/home.wxml — 个人工作台（任务 13）。
+     任务 16：根节点内联 --mhp-scale（shared/ui/a11y.ts 写入），高对比加 is-hc。
+     视觉充实版：问候 + 准备总览 + 记录概览 + 最近记录 + 使用提示；全局导航在左侧栏。 -->
+<view class="workbench app-shell {{highContrast ? 'is-hc' : ''}} {{sidebarCollapsed ? 'is-collapsed' : ''}}" style="--mhp-scale: {{scale}}">
+  <app-sidebar current="home" collapsed="{{sidebarCollapsed}}" scale="{{scale}}" bind:toggle="onSidebarToggle" />
+
+  <!-- ① 问候与定位 -->
+  <view class="wb-hero">
+    <view class="wb-hero__top">
+      <text class="wb-hero__greeting">{{greeting}}{{profileName ? '，' + profileName : ''}}</text>
+      <text class="wb-hero__date">{{todayLabel}}</text>
+    </view>
+    <text class="wb-hero__tagline">{{home.tagline}}</text>
+  </view>
+
+  <!-- ② 准备总览（档案完整度） -->
+  <view class="wb-overview">
+    <view class="wb-overview__head">
+      <text class="wb-overview__title">{{home.profileTitle}}</text>
+      <text class="wb-overview__link" bindtap="onProfileTap">{{profileLinkLabel}}</text>
+    </view>
+    <view class="wb-overview__metric">
+      <text class="wb-overview__value">{{completeness.filled}}</text>
+      <text class="wb-overview__total">/ {{completeness.total}}</text>
+      <text class="wb-overview__unit">{{home.overviewUnit}}</text>
+    </view>
+    <view class="wb-overview__bar">
+      <view class="wb-overview__fill" style="width: {{completeness.percent}}%;"></view>
+    </view>
+    <text class="wb-overview__hint">{{profileHint}}</text>
+  </view>
+
+  <!-- ③ 记录概览（各类记录条数；点按进入对应页） -->
+  <view class="wb-stats">
+    <view class="wb-stat" data-route="pages/symptoms/symptoms" bindtap="onEntryTap">
+      <view class="mhp-ico mhp-ico--stethoscope wb-stat__ico"></view>
+      <text class="wb-stat__num">{{stats.symptoms}}</text>
+      <text class="wb-stat__label">{{home.statSymptoms}}</text>
+    </view>
+    <view class="wb-stat" data-route="pages/notes/notes" bindtap="onEntryTap">
+      <view class="mhp-ico mhp-ico--file-text wb-stat__ico"></view>
+      <text class="wb-stat__num">{{stats.notes}}</text>
+      <text class="wb-stat__label">{{home.statNotes}}</text>
+    </view>
+    <view class="wb-stat" data-route="pages/questions/questions" bindtap="onEntryTap">
+      <view class="mhp-ico mhp-ico--message-circle-question wb-stat__ico"></view>
+      <text class="wb-stat__num">{{stats.questions}}</text>
+      <text class="wb-stat__label">{{home.statQuestions}}</text>
+    </view>
+  </view>
+
+  <!-- ④ 最近记录 -->
+  <view class="wb-section">
+    <view class="wb-section__head">
+      <text class="wb-section__title">{{home.recentTitle}}</text>
+      <text class="wb-section__hint" wx:if="{{hasRecords}}">{{home.recentHint}}</text>
+    </view>
+
+    <view class="mhp-empty mhp-empty--inline" wx:if="{{!hasRecords}}">
+      <text class="mhp-empty__text">{{emptyRecordsText}}</text>
+      <view
+        class="wb-empty__action"
+        data-route="pages/symptoms/symptoms"
+        bindtap="onEntryTap"
+      >{{home.emptyAction}}</view>
+    </view>
+
+    <view class="wb-list" wx:else>
+      <view
+        class="wb-row"
+        wx:for="{{recentRecords}}"
+        wx:key="key"
+        data-route="{{item.route}}"
+        bindtap="onRecordTap"
+      >
+        <text class="wb-row__tag">{{item.label}}</text>
+        <text class="wb-row__summary">{{item.summary}}</text>
+        <text class="wb-row__time">{{item.updatedLabel}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- ⑤ 使用提示 -->
+  <view class="wb-tips">
+    <view class="mhp-ico mhp-ico--info wb-tips__ico"></view>
+    <view class="wb-tips__body">
+      <text class="wb-tips__title">{{home.tipsTitle}}</text>
+      <text class="wb-tips__text">{{safetyFixed}}</text>
+      <text class="wb-tips__text wb-tips__text--muted">{{privacyFixed}}</text>
+    </view>
+  </view>
+</view>

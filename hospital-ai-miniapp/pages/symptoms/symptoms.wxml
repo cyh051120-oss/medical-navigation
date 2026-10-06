@@ -1,0 +1,131 @@
+<!-- pages/symptoms/symptoms.wxml — 症状时间线（任务 17）。
+     无障碍：根节点内联 --mhp-scale 与 is-hc，消费任务 16 的全局缩放/高对比机制。 -->
+<view class="symptoms app-shell {{highContrast ? 'is-hc' : ''}} {{sidebarCollapsed ? 'is-collapsed' : ''}}" style="--mhp-scale: {{scale}}">
+  <app-sidebar current="symptoms" collapsed="{{sidebarCollapsed}}" scale="{{scale}}" bind:toggle="onSidebarToggle" />
+  <view class="hero">
+    <view class="hero__text">
+      <text class="hero__title">{{copy.title}}</text>
+      <text class="hero__sub">{{copy.intro}}</text>
+    </view>
+    <view class="hero__add" wx:if="{{!formOpen}}" bindtap="onAdd">{{buttons.add}}</view>
+  </view>
+
+  <view class="editor" wx:if="{{formOpen}}">
+    <view class="editor__head">
+      <text class="editor__title">{{editingId ? copy.editTitle : copy.addTitle}}</text>
+      <view class="editor__close" bindtap="onCancelForm">{{buttons.cancel}}</view>
+    </view>
+
+    <view class="field">
+      <text class="field__label">{{copy.occurredLabel}}</text>
+      <view class="field__pair">
+        <picker class="field__picker" mode="date" value="{{form.date}}" bindchange="onDateChange">
+          <view class="picker">{{form.date || copy.datePlaceholder}}</view>
+        </picker>
+        <picker class="field__picker" mode="time" value="{{form.time}}" bindchange="onTimeChange">
+          <view class="picker">{{form.time || copy.timePlaceholder}}</view>
+        </picker>
+      </view>
+    </view>
+
+    <view class="field">
+      <text class="field__label">{{copy.textLabel}}</text>
+      <textarea
+        class="field__area"
+        value="{{form.text}}"
+        placeholder="{{copy.textPlaceholder}}"
+        bindinput="onTextInput"
+        maxlength="500"
+      />
+    </view>
+
+    <view class="field">
+      <text class="field__label">{{copy.durationLabel}}</text>
+      <input
+        class="field__input"
+        value="{{form.duration}}"
+        placeholder="{{copy.durationPlaceholder}}"
+        bindinput="onDurationInput"
+        maxlength="40"
+      />
+    </view>
+
+    <view class="field">
+      <text class="field__label">{{copy.impactLabel}}</text>
+      <input
+        class="field__input"
+        value="{{form.impact}}"
+        placeholder="{{copy.impactPlaceholder}}"
+        bindinput="onImpactInput"
+        maxlength="100"
+      />
+    </view>
+
+    <view class="field">
+      <text class="field__label">{{copy.tagsLabel}}</text>
+      <input
+        class="field__input"
+        value="{{form.tagsText}}"
+        placeholder="{{copy.tagsPlaceholder}}"
+        bindinput="onTagsInput"
+        maxlength="120"
+      />
+    </view>
+
+    <view class="field">
+      <text class="field__label">{{copy.attachmentLabel}}</text>
+      <view class="attach" wx:if="{{attachmentName}}">
+        <text class="attach__name">{{attachmentName}}</text>
+      </view>
+      <view class="btn btn--ghost" bindtap="onPickAttachment">
+        {{attachmentName ? copy.replaceAttachment : copy.pickAttachment}}
+      </view>
+      <text class="field__hint">{{copy.attachmentHint}}</text>
+    </view>
+
+    <text class="mhp-error" wx:if="{{errorText}}">{{errorText}}</text>
+
+    <view class="editor__actions">
+      <view class="btn btn--primary" bindtap="onSave">{{buttons.save}}</view>
+      <view class="btn btn--ghost" bindtap="onCancelForm">{{buttons.cancel}}</view>
+    </view>
+  </view>
+
+  <view class="timeline" wx:if="{{hasRecords}}">
+    <view class="tl-item" wx:for="{{rows}}" wx:key="id">
+      <view class="tl-rail">
+        <view class="tl-dot"></view>
+        <view class="tl-line"></view>
+      </view>
+      <view class="tl-card">
+        <view class="tl-card__head">
+          <text class="tl-card__time">{{item.occurredLabel}}</text>
+          <text class="tl-card__duration" wx:if="{{item.duration}}">{{copy.durationLabel}} {{item.duration}}</text>
+        </view>
+        <text class="tl-card__text">{{item.text}}</text>
+        <text class="tl-card__impact" wx:if="{{item.impact}}">{{copy.impactLabel}}：{{item.impact}}</text>
+        <view class="tl-tags" wx:if="{{item.tags.length > 0}}">
+          <text class="tl-tag" wx:for="{{item.tags}}" wx:for-item="tag" wx:key="*this">{{tag}}</text>
+        </view>
+        <view class="tl-card__attach" wx:if="{{item.hasAttachment}}">
+          <text class="tl-card__attach-label">{{copy.attachmentLabel}}</text>
+          <text class="tl-card__attach-name">{{item.attachmentName}}</text>
+        </view>
+        <view class="tl-card__stamp">
+          <text class="tl-card__stamp-item">{{copy.createdAtPrefix}} {{item.createdLabel}}</text>
+          <text class="tl-card__stamp-item">{{copy.updatedAtPrefix}} {{item.updatedLabel}}</text>
+        </view>
+        <view class="tl-card__actions">
+          <view class="btn btn--ghost" data-id="{{item.id}}" bindtap="onEdit">{{buttons.edit}}</view>
+          <view class="btn btn--danger" data-id="{{item.id}}" bindtap="onDelete">{{buttons.delete}}</view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="mhp-empty" wx:else>
+    <view class="mhp-empty__badge"><view class="mhp-ico mhp-ico--stethoscope"></view></view>
+    <text class="mhp-empty__text">{{emptyText}}</text>
+    <view class="btn btn--primary mhp-empty__action" bindtap="onAdd">{{buttons.add}}</view>
+  </view>
+</view>

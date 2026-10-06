@@ -1,0 +1,328 @@
+/* pages/home/home.wxss — 个人工作台（任务 13；视觉充实版）。
+   信息架构（自上而下）：
+     ① 问候与定位：问候 + 本地日期 + 产品一句话
+     ② 准备总览：档案完整度大号数值 + 进度条 + 提示
+     ③ 记录概览：症状 / 资料 / 待问 三块计数卡（可点按进入）
+     ④ 最近记录：扫描带（固定 tag 列宽，保证各行摘要左边缘对齐）
+     ⑤ 使用提示：安全提示句 + 本地优先说明
+   全局导航改由左侧栏承载，工作台不再重复列功能入口。
+
+   层次不靠新增字号：字号沿用 tokens.wxss 的四档
+   （44 / 32 / 28 / 24，均 calc(Nrpx * var(--mhp-scale))）；
+   准备总览的大号数值用 40rpx「统计数值级」（非文字层级，见 tokens.wxss）。
+   全部颜色消费 styles/tokens.wxss 的语义令牌，不写裸色值。 */
+
+.workbench {
+  min-height: 100%;
+  box-sizing: border-box;
+  padding: var(--mhp-space-8) var(--mhp-space-7) var(--mhp-space-11);
+  background: var(--bg-main);
+  color: var(--text-body);
+}
+
+/* ----- ① 定位 ----- */
+
+.wb-hero {
+  padding: var(--mhp-space-2) var(--mhp-space-2) var(--mhp-space-6);
+}
+
+.wb-hero__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--mhp-space-4);
+}
+
+/* page title tier */
+.wb-hero__greeting {
+  flex: 1;
+  min-width: 0;
+  font-size: calc(44rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-title);
+  font-weight: var(--mhp-fw-semibold);
+  color: var(--text-title);
+}
+
+/* caption tier —— 本地日期，靠右与问候同行 */
+.wb-hero__date {
+  flex: none;
+  font-size: calc(24rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-caption);
+  color: var(--text-caption);
+  white-space: nowrap;
+}
+
+/* body tier —— 产品定位句（首屏的"这是什么"） */
+.wb-hero__tagline {
+  display: block;
+  margin-top: var(--mhp-space-3);
+  font-size: calc(28rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-body);
+  color: var(--text-body);
+}
+
+/* ----- ② 准备总览（档案完整度） ----- */
+
+.wb-overview {
+  margin-top: var(--mhp-space-8);
+  padding: var(--mhp-space-8);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-md);
+}
+
+.wb-overview__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--mhp-space-4);
+}
+
+/* body tier */
+.wb-overview__title {
+  font-size: calc(28rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-body);
+  color: var(--text-body);
+}
+
+/* caption tier */
+.wb-overview__link {
+  font-size: calc(24rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-caption);
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+.wb-overview__metric {
+  display: flex;
+  align-items: baseline;
+  gap: var(--mhp-space-2);
+  margin-top: var(--mhp-space-4);
+}
+
+/* 统计数值级（40rpx）——承载"已完善 X / Y"的主角数字 */
+.wb-overview__value {
+  font-size: calc(40rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-title);
+  font-weight: var(--mhp-fw-semibold);
+  color: var(--color-primary);
+}
+
+.wb-overview__total {
+  font-size: calc(32rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-title);
+  color: var(--text-caption);
+}
+
+/* caption tier */
+.wb-overview__unit {
+  margin-left: var(--mhp-space-3);
+  font-size: calc(24rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-caption);
+  color: var(--text-caption);
+}
+
+.wb-overview__bar {
+  height: 12rpx;
+  margin-top: var(--mhp-space-5);
+  border-radius: var(--radius-xl);
+  background: var(--bg-main);
+  overflow: hidden;
+}
+
+.wb-overview__fill {
+  height: 100%;
+  border-radius: var(--radius-xl);
+  background: var(--color-primary);
+  transition: width var(--motion-normal) var(--ease-standard);
+}
+
+/* caption tier */
+.wb-overview__hint {
+  display: block;
+  margin-top: var(--mhp-space-5);
+  font-size: calc(24rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-caption);
+  color: var(--text-caption);
+}
+
+/* ----- ③ 记录概览（三块计数卡，可点按进入对应页） ----- */
+
+.wb-stats {
+  display: flex;
+  gap: var(--mhp-space-5);
+  margin-top: var(--mhp-space-7);
+}
+
+.wb-stat {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--mhp-space-3);
+  padding: var(--mhp-space-7) var(--mhp-space-4);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-sm);
+}
+
+.wb-stat__ico {
+  width: calc(44rpx * var(--mhp-scale));
+  height: calc(44rpx * var(--mhp-scale));
+  color: var(--color-primary);
+}
+
+/* section title tier */
+.wb-stat__num {
+  font-size: calc(32rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-title);
+  font-weight: var(--mhp-fw-semibold);
+  color: var(--text-title);
+}
+
+/* caption tier */
+.wb-stat__label {
+  font-size: calc(24rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-caption);
+  color: var(--text-caption);
+}
+
+/* ----- 区块标题（④ 最近记录通用一种形态，避免同层竞争） ----- */
+
+.wb-section {
+  margin-top: var(--mhp-space-10);
+}
+
+.wb-section__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--mhp-space-5);
+}
+
+/* section title tier */
+.wb-section__title {
+  font-size: calc(32rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-title);
+  font-weight: var(--mhp-fw-semibold);
+  color: var(--text-title);
+}
+
+/* caption tier */
+.wb-section__hint {
+  font-size: calc(24rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-caption);
+  color: var(--text-caption);
+}
+
+/* ----- ③ 最近记录（扫描带） ----- */
+
+.wb-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mhp-space-4);
+}
+
+.wb-row {
+  display: flex;
+  align-items: center;
+  gap: var(--mhp-space-4);
+  padding: var(--mhp-space-6) var(--mhp-space-7);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-sm);
+}
+
+/* 固定列宽：让最长/最短标签（资料 / 症状）之后的内容左边缘对齐 */
+.wb-row__tag {
+  flex: none;
+  width: 88rpx;
+  box-sizing: border-box;
+  padding: var(--mhp-space-1) 0;
+  border-radius: var(--radius-sm);
+  font-size: calc(24rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-caption);
+  text-align: center;
+  color: var(--color-primary);
+  background: var(--bg-main);
+}
+
+/* body tier — wraps instead of ellipsizing so long text is never truncated */
+.wb-row__summary {
+  flex: 1;
+  min-width: 0;
+  font-size: calc(28rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-body);
+  color: var(--text-body);
+  word-break: break-all;
+}
+
+/* caption tier */
+.wb-row__time {
+  flex: none;
+  font-size: calc(24rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-caption);
+  color: var(--text-caption);
+}
+
+/* 空态里的动作按钮（此前空态只有文字，文案却让用户"点击下方按钮"） */
+.wb-empty__action {
+  align-self: center;
+  padding: var(--mhp-space-4) var(--mhp-space-9);
+  border-radius: var(--radius-md);
+  font-size: calc(28rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-body);
+  font-weight: var(--mhp-fw-semibold);
+  color: var(--bg-card);
+  background: var(--color-primary);
+  text-align: center;
+}
+
+/* ----- ⑤ 使用提示 ----- */
+
+.wb-tips {
+  display: flex;
+  gap: var(--mhp-space-5);
+  margin-top: var(--mhp-space-10);
+  padding: var(--mhp-space-7);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-sm);
+}
+
+.wb-tips__ico {
+  flex: none;
+  width: calc(36rpx * var(--mhp-scale));
+  height: calc(36rpx * var(--mhp-scale));
+  margin-top: var(--mhp-space-1);
+  color: var(--color-primary);
+}
+
+.wb-tips__body {
+  flex: 1;
+  min-width: 0;
+}
+
+/* body tier */
+.wb-tips__title {
+  display: block;
+  font-size: calc(28rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-body);
+  font-weight: var(--mhp-fw-semibold);
+  color: var(--text-title);
+}
+
+/* caption tier */
+.wb-tips__text {
+  display: block;
+  margin-top: var(--mhp-space-3);
+  font-size: calc(24rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-caption);
+  color: var(--text-body);
+}
+
+.wb-tips__text--muted {
+  margin-top: var(--mhp-space-2);
+  color: var(--text-caption);
+}
