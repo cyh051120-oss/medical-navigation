@@ -43,7 +43,7 @@ const failureMode = process.argv.includes('--simulate-failure');
 const { extractMemory } = await import(
   pathToFileURL(resolve(root, 'server/extract-memory.ts')).href
 );
-const { LIMITS, buildExtractSystemPrompt } = await import(
+const { LIMITS, EXTRACT_SYSTEM_PROMPT } = await import(
   pathToFileURL(resolve(root, 'server/prompts.ts')).href
 );
 
@@ -461,9 +461,9 @@ llm.state.content = JSON.stringify({ candidates: [{ text: '偏好早睡' }] });
 {
   await extractMemory(request(), { config: makeConfig() });
   const sys = systemContent(lastLlmBody());
-  const prompt = buildExtractSystemPrompt();
+  const prompt = EXTRACT_SYSTEM_PROMPT;
   record(
-    'prompt: system content contains 记忆提炼 and NOT 问诊建议 (buildExtractSystemPrompt too)',
+    'prompt: system content contains 记忆提炼 and NOT 问诊建议 (EXTRACT_SYSTEM_PROMPT too)',
     sys.includes('记忆提炼') &&
       !sys.includes('问诊建议') &&
       prompt.includes('记忆提炼') &&

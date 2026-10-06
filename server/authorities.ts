@@ -92,10 +92,26 @@ export function isAuthorityUrl(urlOrHost: string, domains: readonly string[]): b
 }
 
 /**
+ * 判定一个条目是否为「可信的权威域名」（P1-42）：
+ *   - 可被 normalizeDomain 规整（非空、非纯路径等）；
+ *   - 至少 2 段（拒绝 `com` / `cn` 这类裸 TLD）；
+ *   - 每段符合 `[a-z0-9]([a-z0-9-]*[a-z0-9])?`（拒绝空段 / 首尾连字符 / 非法字符）。
+ *
+ * 该函数不打印任何内容（authorities.ts 保持无副作用）；可见告警由 config.ts 负责。
+ */
+export function isPlausibleAuthorityDomain(input: string): boolean {
+  const domain = normalizeDomain(input);
+  if (domain === null) return false;
+  const labels = domain.split('.');
+  if (labels.length < 2) return false;
+  return labels.every((label) => /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label));
+}
+
+/**
  * 解析生效的权威域名清单（去重、保持首次出现顺序）。
  *
- * - config 非空且规整后仍有 ≥1 个有效域名 → 覆盖默认；
- * - config 为空 / undefined / 全部无效 → 回退 DEFAULT_AUTHORITY_DOMAINS。
+ * - config 非空且规整后仍有 ≥1 个合法域名 → 覆盖默认；
+ * - config 为空 / undefined / 全部非法（含裸 TLD）→ 回退 DEFAULT_AUTHORITY_DOMAINS。
  */
 export function resolveAuthorityDomains(
   configDomains: readonly string[] | null | undefined
@@ -104,6 +120,7 @@ export function resolveAuthorityDomains(
   const seen = new Set<string>();
   if (Array.isArray(configDomains)) {
     for (const raw of configDomains) {
+      if (typeof raw !== 'string' || !isPlausibleAuthorityDomain(raw)) continue;
       const domain = normalizeDomain(raw);
       if (domain === null || seen.has(domain)) continue;
       seen.add(domain);

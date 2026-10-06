@@ -144,6 +144,82 @@ function curlStatus(url, body) {
 // fixtures 自检（happy 路径）
 // ---------------------------------------------------------------------------
 
+/** P1-7 契约：服务端与客户端孪生的红标词表必须逐项相等；缺失/分歧都是失败。 */
+async function redflagParityCheck() {
+  const serverMod = await import(pathToFileURL(resolve(root, 'server/redflags.ts')).href);
+  let clientMod = null;
+  let importError = null;
+  try {
+    clientMod = await import(
+      pathToFileURL(resolve(root, 'hospital-ai-miniapp/shared/services/redflags.ts')).href
+    );
+  } catch (err) {
+    importError = err instanceof Error ? err.message : String(err);
+  }
+  if (clientMod === null) {
+    return {
+      name: 'redflag parity: client twin exports REDFLAG_PATTERN_SOURCES + NEGATION_PATTERN_SOURCES + NEG_FILLER_SOURCES',
+      ok: false,
+      detail: `missing/unextendable client twin hospital-ai-miniapp/shared/services/redflags.ts (${importError})`,
+    };
+  }
+  const ARRAYS = ['REDFLAG_PATTERN_SOURCES', 'NEGATION_PATTERN_SOURCES', 'NEG_FILLER_SOURCES'];
+  const mismatches = {};
+  for (const key of ARRAYS) {
+    const serverVal = serverMod[key];
+    const clientVal = clientMod[key];
+    if (!Array.isArray(serverVal)) mismatches[key] = { server_missing: true };
+    else if (!Array.isArray(clientVal)) mismatches[key] = { client_missing: true };
+    else if (JSON.stringify(serverVal) !== JSON.stringify(clientVal)) {
+      mismatches[key] = { server: serverVal, client: clientVal };
+    }
+  }
+  const mismatchedKeys = Object.keys(mismatches);
+  return {
+    name: 'redflag parity: REDFLAG_PATTERN_SOURCES + NEGATION_PATTERN_SOURCES + NEG_FILLER_SOURCES deep-equal server vs client twin',
+    ok: mismatchedKeys.length === 0,
+    detail: mismatchedKeys.length === 0 ? null : { mismatched: mismatches },
+  };
+}
+
+/**
+ * P1-7 twin(2)：客户端 demo 引擎的红标数据必须与服务端 demo-fixtures.json 的 redflag 逐字节一致。
+ * demoAi.ts 的 REDFLAG_DATA 是模块私有常量，故用其公开引擎 demoAsk（红标输入短路）取回同一份数据
+ * 再深度比对 —— 既验证数据一致，也验证客户端 demo 短路确实返回该数据。
+ */
+async function demoRedflagFixtureCheck(fixtures) {
+  const name =
+    'demo twin: client demoAi redflag data deep-equals server demo-fixtures.redflag';
+  let clientAi = null;
+  let importError = null;
+  try {
+    clientAi = await import(
+      pathToFileURL(resolve(root, 'hospital-ai-miniapp/shared/services/demoAi.ts')).href
+    );
+  } catch (err) {
+    importError = err instanceof Error ? err.message : String(err);
+  }
+  if (clientAi === null || typeof clientAi.demoAsk !== 'function') {
+    return {
+      name,
+      ok: false,
+      detail: `cannot import client demo engine hospital-ai-miniapp/shared/services/demoAi.ts (${importError})`,
+    };
+  }
+  const result = clientAi.demoAsk({
+    mode: 'consult',
+    messages: [{ role: 'user', content: '我胸痛' }],
+  });
+  const clientRedflag = result !== null && typeof result === 'object' ? result.data : null;
+  return {
+    name,
+    ok: sameJson(clientRedflag, fixtures.redflag),
+    detail: sameJson(clientRedflag, fixtures.redflag)
+      ? null
+      : { client: clientRedflag, server: fixtures.redflag },
+  };
+}
+
 function selfCheckFixtures() {
   const results = [];
   const add = (name, ok, detail) => results.push({ name, ok: ok === true, detail });
@@ -244,6 +320,16 @@ const scenarios = [
     expected: () => fixtures.redflag,
   },
   {
+    name: 'negated-redflag',
+    path: '/api/ask',
+    request: {
+      mode: 'organize',
+      messages: [{ role: 'user', content: '我没有胸痛，只是有点累' }],
+      consent: true,
+    },
+    expected: () => fixtures.organize,
+  },
+  {
     name: 'minimal',
     path: '/api/ask',
     request: { mode: 'organize', messages: [{ role: 'user', content: '   ' }], consent: true },
@@ -336,6 +422,8 @@ try {
   // Happy 路径
   // ---------------------------------------------------------------------
   const selfChecks = selfCheckFixtures();
+  selfChecks.push(await redflagParityCheck());
+  selfChecks.push(await demoRedflagFixtureCheck(fixtures));
 
   const config = {
     port,
@@ -349,6 +437,18 @@ try {
   const started = spawnServer(configPath);
   child = started.child;
   const health = await waitForHealth(port);
+
+  const healthFieldsOk =
+    health.status === 200 &&
+    health.response !== null &&
+    health.response.ok === true &&
+    health.response.demo === true &&
+    health.response.demoMode === true;
+  selfChecks.push({
+    name: 'health: /api/health exposes {ok,demo,demoMode} with demo=true (P1-13)',
+    ok: healthFieldsOk,
+    detail: health.response,
+  });
 
   const scenarioRecords = [];
   let allPassed = health.status === 200;

@@ -225,11 +225,6 @@ export const EXTRACT_SYSTEM_PROMPT = [
   '- 若没有可提炼的偏好，返回 {"candidates": []}；禁止输出上述 JSON 之外的其他任何字段。',
 ].join('\n');
 
-/** 返回记忆提炼 system 提示（确定性；无外部上下文）。 */
-export function buildExtractSystemPrompt(): string {
-  return EXTRACT_SYSTEM_PROMPT;
-}
-
 // ---------------------------------------------------------------------------
 // 问诊引导（连续追问）
 // ---------------------------------------------------------------------------

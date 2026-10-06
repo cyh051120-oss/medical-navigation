@@ -37,6 +37,7 @@
 // 约束：可擦除语法（无 enum/namespace/参数属性）；仅类型导入使用 `import type`。
 
 import type { SearchConfig } from '../config.ts';
+import { asRecord, isPlaceholderBaseUrl } from '../config.ts';
 import {
   isAuthorityUrl,
   resolveAuthorityDomains,
@@ -77,6 +78,8 @@ export type SearchOptions = {
   timeoutMs?: number;
   /** 调用方取消信号；仅用于中止本次请求（同样归一化为 search_unavailable）。 */
   signal?: AbortSignal;
+  /** 单请求总预算到期时刻（epoch ms）；用于把超时收敛到剩余预算。 */
+  deadlineAt?: number;
 };
 
 const DEFAULT_TIMEOUT_MS = 30000;
@@ -85,12 +88,6 @@ const DEFAULT_LIMIT = 10;
 // ---------------------------------------------------------------------------
 // 小工具
 // ---------------------------------------------------------------------------
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
 
 function endpoint(baseUrl: string): string {
   return `${baseUrl.replace(/\/+$/, '')}/search`;
@@ -144,13 +141,20 @@ export async function search(query: string, options: SearchOptions): Promise<Sea
   const baseUrl = options.config.baseUrl.trim();
   const domains = resolveAuthorityDomains(options.authorityDomains);
 
-  if (baseUrl === '') return { results: [], reason: 'not_configured' };
+  if (baseUrl === '' || isPlaceholderBaseUrl(baseUrl)) {
+    return { results: [], reason: 'not_configured' };
+  }
   if (q === '') return { results: [], reason: 'no_results' };
 
-  const timeoutMs =
+  const baseTimeout =
     typeof options.timeoutMs === 'number' && options.timeoutMs > 0
       ? options.timeoutMs
       : DEFAULT_TIMEOUT_MS;
+  const remaining =
+    options.deadlineAt === undefined ? Number.POSITIVE_INFINITY : options.deadlineAt - Date.now();
+  const timeoutMs = Number.isFinite(remaining)
+    ? Math.max(1, Math.min(baseTimeout, remaining))
+    : baseTimeout;
   const limit =
     typeof options.limit === 'number' && Number.isInteger(options.limit) && options.limit > 0
       ? options.limit
@@ -183,7 +187,12 @@ export async function search(query: string, options: SearchOptions): Promise<Sea
     }
 
     if (!res.ok) {
-      // 限流（429）/ 5xx 等：不回显上游响应体。
+      // 限流（429）/ 5xx 等：消费响应体使连接归还连接池，且不回显内容。
+      try {
+        await res.body?.cancel();
+      } catch {
+        // 已消费 / 已关闭：忽略。
+      }
       return { results: [], reason: 'search_unavailable' };
     }
 

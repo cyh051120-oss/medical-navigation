@@ -1034,16 +1034,33 @@ async function main() {
     // ---- 2k. red-flag inputs -> fixed safety notice only -----------------
     const redflags = await evalPage(pageRedflags, { terms: RED_FLAG_INPUTS }, 'redflags', 90000);
     P1.redflags = redflags;
+    // P1-8: SAFETY_NOTICE deliberately carries the emergency call「拨打 120」. That is legal ONLY
+    // because the notice also carries an emergency cue (立即/马上/急诊/急救) in the same clause;
+    // every other DECISION term stays banned. hasEmergencyCue comes from server/validate.ts so the
+    // cue rule has a single definition; the emergency-call term list mirrors validate.ts
+    // EMERGENCY_CALL_TERMS. (弱线索「尽快」已于 P1-8 tightening 移除，不再豁免。)
+    const emergencyCuePresent = validate.hasEmergencyCue(SAFETY_NOTICE);
+    const emergencyAllowedTerms = ['拨打', '120'];
+    const bannedDecisionTerms = DECISION.filter((t) => {
+      if (SAFETY_NOTICE.indexOf(t) === -1) return false;
+      return !(emergencyCuePresent && emergencyAllowedTerms.indexOf(t) !== -1);
+    });
+    const noticeHas120 = SAFETY_NOTICE.indexOf('120') !== -1;
     const safetyClean =
       SAFETY_NOTICE.length > 0 &&
       !DEPTS.some((d) => SAFETY_NOTICE.indexOf(d) !== -1) &&
       !SC.redFlagTerms.some((t) => SAFETY_NOTICE.indexOf(t) !== -1) &&
-      !DECISION.some((t) => SAFETY_NOTICE.indexOf(t) !== -1);
+      bannedDecisionTerms.length === 0 &&
+      noticeHas120 &&
+      emergencyCuePresent;
     record('redflag_notice_purity_ok', safetyClean, {
       safetyNotice: SAFETY_NOTICE,
       departments: DEPTS,
       redFlagTerms: SC.redFlagTerms,
       decisionTerms: DECISION,
+      bannedDecisionTerms,
+      emergencyCuePresent,
+      noticeHas120,
     });
     const redflagsOk =
       Array.isArray(redflags) &&

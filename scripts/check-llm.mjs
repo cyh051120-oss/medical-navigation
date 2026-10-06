@@ -4,15 +4,16 @@
 //
 // Spins up local OpenAI-compatible mock upstream(s) bound to 127.0.0.1 on an
 // ephemeral port (OS-assigned), then dynamically imports the adapter and asserts:
-//   - request shape: POST {baseUrl}/chat/completions, Authorization, body {model,messages,stream}
+//   - request shape: POST {baseUrl}/chat/completions, Authorization, body {model,messages}
 //   - non-stream JSON parse (content / model / finish_reason)
-//   - stream SSE accumulation across split network chunks + [DONE]
 //   - retry policy: 5xx retried exactly once; 4xx not retried; persistent 5xx -> 1 retry
 //   - timeout -> normalized `timeout` error, retried once
 //   - invalid_config -> no network call; invalid_response -> no retry
-//   - stream that never reaches [DONE] -> invalid_response, no retry after a delta
 //   - config-driven routing: different baseUrl/apiKey/model selects a different upstream
 //   - privacy: adapter source contains no disk-write or console statements
+//
+// SSE streaming was removed (P1-39/P1-40): it had zero product consumers and the abort
+// chain was unreachable; its test claims are removed with it.
 //
 // No external network I/O is performed; everything stays on 127.0.0.1.
 //
@@ -59,16 +60,6 @@ function okJson(content = 'Hello from mock', model = 'mock-model') {
     ],
     usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 },
   };
-}
-
-function ssePayload() {
-  return [
-    `data: ${JSON.stringify({ id: 'c1', model: 'mock-model', choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }] })}\n\n`,
-    `data: ${JSON.stringify({ id: 'c1', model: 'mock-model', choices: [{ index: 0, delta: { content: '你好' }, finish_reason: null }] })}\n\n`,
-    `data: ${JSON.stringify({ id: 'c1', model: 'mock-model', choices: [{ index: 0, delta: { content: '，世界' }, finish_reason: null }] })}\n\n`,
-    `data: ${JSON.stringify({ id: 'c1', model: 'mock-model', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\n`,
-    'data: [DONE]\n\n',
-  ].join('');
 }
 
 function startMock(name) {
@@ -127,37 +118,6 @@ function startMock(name) {
         }
         return;
       }
-      if (mode === 'ok-sse') {
-        res.statusCode = 200;
-        res.setHeader('content-type', 'text/event-stream');
-        const payload = ssePayload();
-        // Split at awkward byte offsets to exercise line buffering.
-        const a = Math.floor(payload.length * 0.3);
-        const b = Math.floor(payload.length * 0.66);
-        res.write(payload.slice(0, a));
-        setTimeout(() => {
-          if (res.writableEnded) return;
-          res.write(payload.slice(a, b));
-          setTimeout(() => {
-            if (res.writableEnded) return;
-            res.write(payload.slice(b));
-            res.end();
-          }, 10).unref();
-        }, 10).unref();
-        return;
-      }
-      if (mode === 'sse-fail-after-delta') {
-        res.statusCode = 200;
-        res.setHeader('content-type', 'text/event-stream');
-        res.write(
-          `data: ${JSON.stringify({ model: 'mock-model', choices: [{ index: 0, delta: { content: '部分' }, finish_reason: null }] })}\n\n`
-        );
-        const t = setTimeout(() => {
-          res.destroy(); // abrupt close, no [DONE]
-        }, 20);
-        t.unref();
-        return;
-      }
       json(200, okJson());
     });
   });
@@ -182,10 +142,8 @@ function startMock(name) {
 
 function callChat(mock, opts = {}) {
   const {
-    stream = false,
     timeoutMs,
     maxRetries,
-    onDelta,
     apiKey = 'sk-test-123',
     model = 'gpt-test',
     baseUrl = mock.baseUrl,
@@ -195,7 +153,7 @@ function callChat(mock, opts = {}) {
       { role: 'system', content: '你是助手' },
       { role: 'user', content: '你好' },
     ],
-    { config: { baseUrl, apiKey, model }, stream, timeoutMs, maxRetries, onDelta }
+    { config: { baseUrl, apiKey, model }, timeoutMs, maxRetries }
   );
 }
 
@@ -285,7 +243,7 @@ primary.state.requests.length = 0;
 const r1 = await callChat(primary);
 const req1 = primary.state.requests[0];
 record(
-  'non-stream: POST {baseUrl}/chat/completions with Authorization + body{model,messages,stream}',
+  'non-stream: POST {baseUrl}/chat/completions with Authorization + body{model,messages}',
   req1 !== undefined &&
     req1.method === 'POST' &&
     req1.url === '/chat/completions' &&
@@ -293,7 +251,7 @@ record(
     String(req1.headers['content-type']).includes('application/json') &&
     req1.body !== null &&
     req1.body.model === 'gpt-test' &&
-    req1.body.stream === false &&
+    !('stream' in req1.body) &&
     Array.isArray(req1.body.messages) &&
     req1.body.messages.length === 2 &&
     req1.body.messages[1].content === '你好',
@@ -309,20 +267,6 @@ record(
   'non-stream: content / model / finish_reason parsed',
   r1.content === 'Hello from mock' && r1.streamed === false && r1.finishReason === 'stop',
   { content: r1.content, model: r1.model, finish_reason: r1.finishReason, streamed: r1.streamed }
-);
-
-// 2) stream SSE accumulation across split chunks
-primary.state.mode = 'ok-sse';
-primary.state.requests.length = 0;
-const deltas = [];
-const r2 = await callChat(primary, { stream: true, onDelta: (d) => deltas.push(d) });
-record(
-  'stream: SSE accumulated across split chunks + [DONE]',
-  r2.content === '你好，世界' &&
-    r2.streamed === true &&
-    deltas.join('') === '你好，世界' &&
-    primary.state.requests[0]?.body?.stream === true,
-  { content: r2.content, deltas, body_stream: primary.state.requests[0]?.body?.stream }
 );
 
 // 3) 5xx retried exactly once -> success
@@ -453,30 +397,6 @@ record(
     primary_request_count: primary.state.requests.length,
     routed_model: req9?.body?.model,
     routed_auth_ok: req9?.headers?.authorization === 'Bearer sk-secondary',
-  }
-);
-
-// 10) incomplete SSE (no [DONE]) -> invalid_response, no retry after a delta
-primary.state.mode = 'sse-fail-after-delta';
-primary.state.requests.length = 0;
-const partialDeltas = [];
-let e10 = null;
-try {
-  await callChat(primary, { stream: true, onDelta: (d) => partialDeltas.push(d) });
-} catch (e) {
-  e10 = e;
-}
-record(
-  'stream: aborted before [DONE] -> normalized error, NO retry after delta emitted (request_count === 1)',
-  e10 instanceof LlmError &&
-    (e10.code === 'network_error' || e10.code === 'invalid_response') &&
-    primary.state.requests.length === 1 &&
-    partialDeltas.join('') === '部分',
-  {
-    code: e10?.code,
-    message: e10?.message,
-    request_count: primary.state.requests.length,
-    deltas: partialDeltas,
   }
 );
 

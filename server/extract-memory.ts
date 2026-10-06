@@ -23,12 +23,16 @@
 
 import type { ChatMessage } from './providers/llm.ts';
 import { chat } from './providers/llm.ts';
-import { loadConfig } from './config.ts';
+import { asRecord, isLlmConfigured, loadConfig } from './config.ts';
 import type { ServerConfig } from './config.ts';
-import { LIMITS, buildExtractSystemPrompt } from './prompts.ts';
-import { DECISION_TERMS, REFERRAL_TERMS, SELF_MEDICATION_TERMS } from './validate.ts';
-
-const ROLES: readonly string[] = ['user', 'assistant', 'system'];
+import { LIMITS, EXTRACT_SYSTEM_PROMPT } from './prompts.ts';
+import {
+  DECISION_TERMS,
+  REFERRAL_TERMS,
+  SELF_MEDICATION_TERMS,
+  normalizeMessages,
+  parseJsonContent,
+} from './validate.ts';
 
 export type ExtractCandidate = { text: string };
 
@@ -63,6 +67,8 @@ export type ExtractOptions = {
   timeoutMs?: number;
   /** 调用方取消信号。 */
   signal?: AbortSignal;
+  /** 单请求总预算到期时刻（epoch ms）。 */
+  deadlineAt?: number;
 };
 
 /** 记忆提炼专属医疗禁词（与 validate.ts 词表合并；医生/医院/诊断等已在共用词表中）。 */
@@ -75,28 +81,8 @@ const EXTRACT_BANNED_TERMS: readonly string[] = [
   ...EXTRACT_MEDICAL_TERMS,
 ];
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
 function empty(reason: ExtractReason): ExtractResponse {
   return { candidates: [], reason };
-}
-
-/** 消息数组规范化：非空、每项为对象且 role 合法、content 为字符串；否则 null。 */
-function normalizeMessages(value: unknown): ChatMessage[] | null {
-  if (!Array.isArray(value) || value.length === 0) return null;
-  const out: ChatMessage[] = [];
-  for (const item of value) {
-    if (item === null || typeof item !== 'object') return null;
-    const rec = item as Record<string, unknown>;
-    if (typeof rec.role !== 'string' || !ROLES.includes(rec.role)) return null;
-    if (typeof rec.content !== 'string') return null;
-    out.push({ role: rec.role as ChatMessage['role'], content: rec.content });
-  }
-  return out;
 }
 
 /** 最近一轮合计 ≤2K 字符：从最早丢弃，剩余单条超大则硬截断。 */
@@ -117,19 +103,6 @@ function resolveMaxItems(value: unknown): number | null {
     return Math.min(Math.floor(value), LIMITS.maxExtractItems);
   }
   return null;
-}
-
-/** 严格 JSON 解析；容忍外层 ```json 围栏；失败返回 null。 */
-function parseJsonContent(content: string): { ok: true; value: unknown } | null {
-  let text = content.trim();
-  if (text === '') return null;
-  const fence = /^```[a-zA-Z0-9]*\s*([\s\S]*?)\s*```$/.exec(text);
-  if (fence !== null) text = fence[1].trim();
-  try {
-    return { ok: true, value: JSON.parse(text) as unknown };
-  } catch {
-    return null;
-  }
 }
 
 /** 逐条校验：合法返回去空白文本，否则 null（违规条目丢弃，不影响其余）。 */
@@ -164,12 +137,12 @@ async function runExtract(
   if (maxItems === null) return empty('invalid_request');
 
   const config = options.config ?? loadConfig();
-  if (config.llm.baseUrl.trim() === '' || config.llm.model.trim() === '') {
+  if (!isLlmConfigured(config.llm)) {
     return empty('provider_not_configured');
   }
 
   const outMessages: ChatMessage[] = [
-    { role: 'system', content: buildExtractSystemPrompt() },
+    { role: 'system', content: EXTRACT_SYSTEM_PROMPT },
     ...capMessages(messages),
   ];
   const maxTokens =
@@ -181,10 +154,10 @@ async function runExtract(
   try {
     const result = await chat(outMessages, {
       config: config.llm,
-      stream: false,
       maxTokens,
       timeoutMs: options.timeoutMs,
       signal: options.signal,
+      deadlineAt: options.deadlineAt,
     });
     content = result.content;
   } catch {

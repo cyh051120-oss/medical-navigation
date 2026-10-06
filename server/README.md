@@ -1,8 +1,21 @@
-# server — 本地 AI 代理（骨架）
+# server — 本地 AI 代理
 
-本目录是个人医疗整理助手的**本地 AI 代理**服务端骨架。它只在本机回环地址运行，
-后续任务（23–28）会在此基础上加入 LLM 适配、检索适配、编排与 demo 流程；本任务（22）
-只落地：配置契约、健康检查、仅本机监听。
+本目录是个人医疗整理助手的**本地 AI 代理**服务端。它只在本机回环地址运行，包含：
+配置契约与健康检查、LLM/检索上游适配、双模式编排（整理 / 问诊建议）、
+**问诊引导（连续追问）**、记忆提炼、红标安全带、输出校验与演示 fixtures。
+
+## HTTP 端点（当前）
+
+| 端点 | 方法 | 说明 |
+| --- | --- | --- |
+| `/api/health` | GET | `{ ok, providerReady, searchReady, demo, demoMode }`（均布尔）。 |
+| `/api/ask` | POST | 双模式编排（organize / consult）；含红标短路与 demo 分支。 |
+| `/api/extract-memory` | POST | 用户偏好记忆提炼（≤3 条）。 |
+| `/api/interview` | POST | **问诊引导**：连续追问的单步接口（一次一个问题，或 `done`）。 |
+| `OPTIONS *` | OPTIONS | CORS 预检 → 204。未知路由 → 404。 |
+
+所有 POST JSON 路由都受**单请求总预算**约束（默认 110000ms，客户端预算 120000ms）：
+超时返回 **HTTP 504 `{ ok:false, error:'deadline_exceeded' }`**；客户端断连时中止上游调用。
 
 ## 运行环境
 
@@ -57,17 +70,23 @@ node server/index.ts
 - **缺失配置** → 进程非零退出，并打印可读指引（提示复制 `config.example.json`），**绝不静默兜底**。
 - **JSON 破损** → 进程非零退出，并打印包含文件路径的解析错误。
 - **文件存在但 key 为空** → 服务照常运行；`/api/health` 报 `providerReady=false` / `searchReady=false`。
+- **占位示例域名**（`api.example.com` / `*.example.org` / `*.example.net`）**显式拒绝**：
+  `providerReady`/`searchReady` 为 false，且对应调用直接返回未配置错误，绝不外发症状文本。
+- **`authorityDomains`**：每项必须是可信域名（≥2 段、标签合法）；裸 TLD（`com`/`cn`）、空串、
+  非数组都会被丢弃并打印可见告警，全部非法时回退 `DEFAULT_AUTHORITY_DOMAINS`。
 
 ## 健康检查
 
 ```bash
 curl -s http://127.0.0.1:8787/api/health
-# => {"ok":true,"providerReady":false,"searchReady":false,"demo":false}
+# => {"ok":true,"providerReady":false,"searchReady":false,"demo":false,"demoMode":false}
 ```
 
-- `GET /api/health` → 200 JSON `{ ok, providerReady, searchReady, demo }`（均为布尔）。
-- `OPTIONS *` → 204（CORS 预检）。
-- 未知路由 → 404 JSON。
+- `GET /api/health` → 200 JSON `{ ok, providerReady, searchReady, demo, demoMode }`（均为布尔）。
+  `demoMode` 与 `demo` 同值，供客户端据此标注「演示输出」。
+  `providerReady` 要求 `llm.baseUrl` / `model` / `apiKey` 均非空且 `baseUrl` 非占位示例域名。
+- `OPTIONS *` → 204（CORS 预检；非白名单 Origin → 403）。
+- 未知路由 → 404 JSON；非本机 Host 头 → 403；POST JSON 路由要求 `Content-Type: application/json`（否则 415）。
 
 ## LLM 适配器（任务 23）
 
@@ -90,14 +109,15 @@ const result = await chat(
 - **配置驱动**：`config` 直接取自 `server/config.json` 的 `llm.{baseUrl,apiKey,model}`；
   换厂商只改 JSON、无需改代码。`loadConfig()`（`server/config.ts`）负责读取与校验契约，
   `baseUrl` 末尾斜杠会自动规整为 `POST {baseUrl}/chat/completions`。
-- **流式**：`stream: true` 时解析 SSE（`data:` 帧，`data: [DONE]` 结束），逐段回调 `onDelta(delta)`；
-  `apiKey` 非空时带 `Authorization: Bearer <key>`。
-- **超时**：`timeoutMs`（默认 30000ms）经 `AbortController` 生效，覆盖连接与响应体读取。
+- **非流式**：只支持非流式 JSON（SSE 流式实现无产品消费者，已移除）。
+- **超时**：单次尝试预算 = `min(timeoutMs ?? 60000, 剩余总预算)`，经 `AbortController` 生效，
+  覆盖连接与响应体读取。
 - **重试**：默认 `maxRetries: 1`（最多 2 次尝试）。
-  - 可重试：网络错误 / 超时 / 上游 5xx。
-  - 不重试：配置错误 / 4xx / 响应格式错误 / 调用方 `signal` 取消；流式一旦已发出增量也不再重试（避免内容重复）。
+  - 可重试：网络错误 / 超时 / 上游 5xx；**剩余预算不足以再跑一次尝试 + 5s 余量时不再重试**。
+  - 不重试：配置错误 / 4xx / 响应格式错误 / 调用方 `signal` 取消。
 - **错误归一化**：抛 `LlmError` 实例（契约 `{ code, message }`）。稳定机器码：
   `invalid_config` | `network_error` | `timeout` | `aborted` | `upstream_error` | `invalid_response`。
+- **连接回收**：非 2xx 响应体会被消费/取消，避免 undici 连接不归还连接池。
 - **隐私**：适配器不写盘、不打印任何请求内容（messages / body / apiKey），上游错误也不回显响应体。
 
 自检：`npx tsx scripts/check-llm.mjs`（本地 mock 上游，仅 127.0.0.1）→ `artifacts/checks/server-llm.json`；
@@ -217,6 +237,9 @@ const res = await ask(
 - `citations`：由解析成功的引用去重生成（**不信任模型自带的 citations 字段**），
   每项 `title/url/domain` 均取自已获取的搜索结果。
 - `disclaimer`：固定常量 `CONSULT_DISCLAIMER`，恒随 consult 结果返回。
+- `degraded`（可选，P1-14）：检索不可用 / 零命中 / 全非权威时出现，值为机器可读 reason
+  （`not_configured` | `no_results` | `no_authority_match` | `search_unavailable`）；
+  此时 `suggestedDepartments` 被清空（不以正常结果形状伪装有来源）。
 
 ### 响应契约（护栏与错误）
 
@@ -243,30 +266,45 @@ const res = await ask(
 
 ### 安全护栏（`server/redflags.ts`）
 
-- `RED_FLAG_TERMS`：计划 8 条（胸痛 / 胸闷伴大汗 / 呼吸困难 / 意识障碍 / 大出血 / 中风征象 / 晕厥 / 剧烈头痛）
-  \+ 同精神补充（窒息 / 抽搐 / 咯血 / 吐血 / 便血 / 言语不清 / 一侧无力）。
+- `REDFLAG_PATTERN_SOURCES`：按危险信号类目组织的**正则源串**（胸痛 / 胸闷伴大汗 / 呼吸困难（喘不上气）/
+  意识障碍（昏迷·叫不醒）/ 心跳呼吸停止 / 大出血 / 出血不止 / 中风征象（口眼歪斜·一侧无力·说话不清）/
+  晕厥 / 剧烈头痛 / 剧烈腹痛 / 持续高热 / 抽搐 / 窒息 / 咯血 / 吐血 / 便血 / 中毒 / 自杀自伤 /
+  孕期出血 / 喉头水肿 等），覆盖口语与书面说法。
+- `NEGATION_PATTERN_SOURCES`：否定前缀（没有 / 无 / 不伴 / 未见 / 否认…）。
+  **否定式提及（如「没有胸痛」）不短路**，整单不被误杀。
+- 两个数组与客户端孪生 `hospital-ai-miniapp/shared/services/redflags.ts` **逐项相等**，
+  `scripts/check-demo.mjs` 断言深度相等。`RED_FLAG_TERMS` 为历史人可读词表（兼容保留）。
 - 扫描范围（**任何上游调用之前**）：窗口内 `user` 角色消息 + `recordExcerpts` + `profileSummary`。
   **`memories` 不扫描**（偏好语义，非医学事实）。
 - 命中即短路：**零 LLM、零搜索调用**，返回固定 `SAFETY_NOTICE`
-  （无科室、无方向、无病情名、无引用，且不含任何红标词本身）。
+  （含急救电话指引：「…请立即拨打 120 或前往最近医院急诊，不要只依赖本工具。」；
+  无科室、无方向、无病情名、无引用，且不含任何红标词本身）。
 
 ### 输出校验（`server/validate.ts`）
 
 - **schema 白名单重建**：只有已知字段进入结果；模型的任何额外字段（如 `narrative` 自由文本病情叙述）一律丢弃，永不回传。
-- **受限词**：通用 `确诊/诊断/处方/疗效/剂量/治愈/拨打/120` 在 points、direction、suggestion、unknowns、questions 中出现即失败；
-  `direction.text` 额外禁 `医生/医院/挂号/大夫/主任/专家`（禁具体医生/医院）；`suggestion.text` 额外禁
-  `服用/口服/停药/加量/减量/换药/毫克/mg/遵医嘱`（禁个性化用药指令）。
-  `unknowns`/`questions` 允许出现「医生」（提问对象）。
+- **受限词（会渲染的字段全覆盖）**：`确诊/诊断/处方/疗效/剂量/治愈` 在
+  `points`、`extracted.*`、`unknowns`、`questions`、`direction`、`suggestion` 中出现即失败。
+  对复述性字段（`points`/`extracted`/`unknowns`/`questions`）采用**分句 + 中性缺失标记**判定：
+  同一分句内出现「不确定 / 未说明 / 待确认 / 是否…」时视为复述用户的信息缺口，放行；
+  否则拦截（修复了旧 ±8 字窗口可被「尚待确认，确诊为…」绕过的问题）。
+  - `拨打` / `120`：仅当整段文本**不含**急救线索（立即 / 马上 / 尽快 / 急诊 / 急救）时才算违规，
+    使产品可在急症路径给出正确引导。
+  - `direction.text` 额外禁 `医生/医院/挂号/大夫/主任/专家`；`suggestion.text` 额外禁
+    `服用/口服/停药/加量/减量/换药/毫克/mg/遵医嘱`。
 - **长度**：`direction.text ≤20`、`suggestion.text ≤40`。
-- **引用**：`citation` 必须与**本次请求已获取的搜索结果**某一 `url` **去空白后完全相等**，且域名通过权威白名单；
-  解析出的 `title/url/domain` 取自已获取来源，不信任模型。匹配规则：精确 URL（trim 后）相等。
+- **extracted 子字段**：显式缺失 → 空数组；存在但类型不符（非字符串数组）→ **失败**
+  （绝不静默丢弃过敏史 / 用药），由编排器统一降级为 `unsafe_output`。
+- **引用**：`citation` 先做 URL 归一化（去空白、去尾斜杠、host 小写、百分号解码、允许省略 scheme）
+  再与**本次请求已获取的搜索结果**比较，只有真正不同的 URL 才失败；
+  解析出的 `title/url/domain` 取自已获取来源，不信任模型。
 - **受控科室**：`suggestedDepartments` 每项必须在 `CONTROLLED_DEPARTMENTS` 内，否则失败。
 
 ### 上下文与上游策略
 
 - 会话窗口：保留最近 **≤20 条**消息，再从最早丢弃直到合计 **≤8K 字符**；单条超大内容硬截断到 8K。
   该 8K 上限作用于会话窗口（不含固定 system 提示）。
-- `max_tokens`：默认 `LIMITS.defaultMaxTokens = 1024`，可通过 `options.maxTokens` 覆盖。
+- `max_tokens`：默认 `LIMITS.defaultMaxTokens = 4096`，可通过 `options.maxTokens` 覆盖。
 - 搜索调用：`organize` **0 次**；`consult` **至多 1 次**，关键词取最近一条 `user` 消息（压空白、**≤200 字**）。
   搜索不可用时 `consult` 仍正常回答，但 `citations` 必然为空；任何引用失败都会降级（`unsafe_output`）。
 - LLM 调用：**非流式、严格 JSON**（容忍可选 ` \`\`\`json ` 围栏）；解析失败 → `unsafe_output`。
@@ -319,7 +357,7 @@ fixtures 结构：`{ redflag, organize, organizeMinimal, consult:{sources,respon
 
 | 端点 | 契约 |
 | --- | --- |
-| `POST /chat/completions` | OpenAI 兼容；非流式 JSON；`stream:true` 时回 SSE（`data:[DONE]` 结束） |
+| `POST /chat/completions` | OpenAI 兼容；非流式 JSON |
 | `POST /search` | T24 契约 `{q,limit}` → `{results:[{title,url,snippet,publishedAt?}]}`（固定返回权威来源） |
 
 - 端口：命令行首个数字参数或 `MOCK_PORT` / `PORT`（默认 `0`，OS 分配临时端口）；启动打印实际 base URL；
@@ -392,7 +430,7 @@ const res = await extractMemory(
 - 逐条校验（**违规条目丢弃，合法条目保留**，不整单失败）：`text` 必须为字符串、去空白非空、**≤60 字**、
   不含受限词（复用 `server/validate.ts` 的 `DECISION_TERMS` / `REFERRAL_TERMS` / `SELF_MEDICATION_TERMS`，
   并叠加记忆提炼专属医疗禁词 `症状/疾病/用药/药物`）；随后**首现去重**、截断到 `maxItems`。
-- 提示词 `buildExtractSystemPrompt()`（`server/prompts.ts`）含关键词「记忆提炼」，且不含「问诊建议」——
+- 提示词 `EXTRACT_SYSTEM_PROMPT`（`server/prompts.ts`）含关键词「记忆提炼」，且不含「问诊建议」——
   与 `server/mock-upstream.mjs` 的确定性内容选择锚点一致。
 - **隐私**：不写盘、不打印任何请求/响应内容。
 
@@ -408,12 +446,53 @@ const res = await extractMemory(
 自检：`npx tsx scripts/check-extract.mjs`（本地 mock LLM，仅 127.0.0.1）→ `artifacts/checks/server-extract.json`；
 失败路径：`npx tsx scripts/check-extract.mjs --simulate-failure` → `artifacts/qa/43-failure.txt`。
 
+## 问诊引导 / `POST /api/interview`
+
+`server/interview.ts` 提供**问诊引导（连续追问）**入口 `interview(request, options?)`：
+帮用户把一段含糊的描述补充成可记录的事实，一次只问一个问题。这是与「资料整理」/「问诊建议」
+并列的**第三模式**，已由 `POST /api/interview` 接线。
+
+```ts
+import { interview } from './interview.ts';
+
+const res = await interview(
+  { messages: [{ role: 'user', content: '最近一周晚上睡不好' }], consent: true, round: 0 },
+  { config } // 省略则读取 server/config.json
+);
+// => { status:'ask', question:{ text, slot } } | { status:'done' }
+//    | { redFlag:true, safetyNotice, disclaimer } | { status:'failed', reason }
+```
+
+### 请求契约
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `messages` | `{role,content}[]` | 非空；含本轮追问在内的全部对话（客户端已脱敏） |
+| `consent` | `true` | 必须字面 `true`；否则 `consent_required`（零上游） |
+| `round` | `number?` | 已完成的追问轮数；缺省按 `messages` 内 assistant 轮数估算 |
+| `memories` | `string[]?` | 偏好记忆（仅调整提问表达方式，非医学事实） |
+
+### 响应契约
+
+- `{ "status":"ask", "question": { "text": "≤60 字", "slot": "onset|duration|impact|tags|detail" } }`
+- `{ "status":"done" }`（信息够了，或已达 `LIMITS.maxInterviewQuestions` 轮上限 → 零 LLM）
+- `{ "redFlag":true, "safetyNotice":"…", "disclaimer":"…" }`（危重信号短路；零 LLM、零搜索）
+- `{ "status":"failed", "reason": "consent_required|invalid_request|provider_not_configured|upstream_error|unsafe_output|internal_error" }`
+
+`question.text` 去空白非空、≤60 字、不含受限词；`slot` 必须命中 `INTERVIEW_SLOTS`。
+`interview()` **绝不抛异常**：未预期错误归一化为 `{status:'failed', reason:'internal_error'}`。
+
 ## 安全与隐私
 
 - **仅监听 `127.0.0.1`**：不写 `0.0.0.0`，不省略 host；外网无法直接访问。
-- **不记录请求内容**：本骨架不落盘任何请求体 / 提示词 / 患者信息。
+- **不记录请求内容**：本服务不落盘任何请求体 / 提示词 / 患者信息。
 - **凭据不入库**：`server/config.json` 已被 `.gitignore` 忽略；仓库内只保留占位示例。
-- **CORS**：允许本地 devtools 调用（回显 `Origin`，或回退 `*`；允许 `GET/POST/OPTIONS` + `Content-Type`）。
+- **CORS**：仅对**本地回环 Origin**（`http://localhost:*` / `http://127.0.0.1:*` / `[::1]`）
+  或微信开发者工具域名，以及 `config.corsOrigins` 显式清单回显 `Access-Control-Allow-Origin`；
+  非白名单 Origin 不回显且预检返回 403。Host 头非本机 → 403；POST JSON 路由要求 `Content-Type: application/json`。
+- **超时与取消**：单请求总预算默认 110000ms（`TOTAL_DEADLINE_MS`，可用 `MHP_TOTAL_DEADLINE_MS` 覆盖，测试用）；
+  超时 → 504 `deadline_exceeded`；客户端断连 → 中止搜索 / LLM。
+- **优雅关闭**：`SIGINT`/`SIGTERM` → `closeAllConnections()` + `close()` + 3s 兜底强制退出，避免端口占用。
 
 ## 校验（零错误门禁）
 
@@ -424,7 +503,7 @@ npx tsc -p server/tsconfig.json --noEmit
 # 全量（小程序 + 服务端）
 npm run typecheck
 
-# 端到端骨架检查（会临时拉起服务并轮询 /api/health，产出 artifacts/server/health.json）
+# 端到端检查（会临时拉起服务并轮询 /api/health，产出 artifacts/server/health.json）
 # 并运行 LLM 适配器检查（本地 mock 上游，产出 artifacts/checks/server-llm.json）
 # 以及搜索适配器检查（本地 mock 上游，产出 artifacts/checks/server-search.json）
 # 以及编排器检查（本地 mock LLM + mock 搜索，产出 artifacts/checks/server-ask.json）

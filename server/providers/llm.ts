@@ -1,24 +1,25 @@
 // server/providers/llm.ts
-// OpenAI 兼容 LLM 适配器（任务 23）。
+// OpenAI 兼容 LLM 适配器（任务 23；P0-4/P1-23/P1-39 修订）。
 //
 // 契约：
 //   chat(messages, options) -> Promise<ChatResult>
 //   - 调用 POST {baseUrl}/chat/completions；apiKey 非空时带 `Authorization: Bearer <key>`。
-//   - 支持非流式 JSON 与流式 SSE（`data:` 帧，以 `data: [DONE]` 结束）。
-//   - 超时通过 AbortController 实现；默认 30000ms，可用 options.timeoutMs 覆盖。
+//   - 仅支持非流式 JSON（SSE 流式实现无产品消费者，已移除，见报告 SERVER.md）。
+//   - 超时通过 AbortController 实现；单次尝试预算 = min(options.timeoutMs ?? 60000, 剩余总预算)。
 //   - 重试：默认最多 1 次（即最多 2 次尝试），可用 options.maxRetries 覆盖。
-//       可重试：网络错误 / 超时 / 上游 5xx。
+//       可重试：网络错误 / 超时 / 上游 5xx。剩余预算不足时不再重试。
 //       不重试：配置错误（invalid_config）/ 4xx / 响应格式错误（invalid_response）/ 调用方取消（aborted）。
-//   - 流式一旦已向上层发出增量（onDelta 触发过），失败后不再重试，避免内容重复。
+//   - 非 2xx 响应体一律消费/取消后再返回，避免 undici 连接不归还连接池（P1-23）。
 //   - 错误归一化为 LlmError 实例：{ code, message }（code 为稳定机器码，见 LlmErrorCode）。
 //   - 隐私：绝不写盘、绝不打印任何请求内容（messages / body / apiKey）。
 //   - 配置驱动：调用方从 server/config.json 的 llm.{baseUrl,apiKey,model} 构造 options.config，
 //     换厂商只需改 JSON，无需改代码。
 //
-// 仅使用 Node 内置全局 fetch / AbortController / TextDecoder，零运行时依赖（Node >= 24）。
+// 仅使用 Node 内置全局 fetch / AbortController，零运行时依赖（Node >= 24）。
 // 约束：可擦除语法（无 enum/namespace/参数属性）；仅类型导入使用 `import type`。
 
 import type { LlmConfig } from '../config.ts';
+import { asRecord } from '../config.ts';
 
 export type ChatRole = 'system' | 'user' | 'assistant';
 
@@ -60,19 +61,13 @@ export type ChatResult = {
   model: string;
   finishReason: string | null;
   usage: ChatUsage | null;
+  /** 恒为 false（非流式）。保留字段以维持既有响应形状。 */
   streamed: boolean;
 };
 
 export type ChatOptions = {
   /** 上游配置（来自 server/config.json 的 llm 段）。 */
   config: LlmConfig;
-  /** true = 流式（SSE）；默认 false。 */
-  stream?: boolean;
-  /** 流式增量回调；每收到一个增量调用一次。 */
-  onDelta?: (delta: string) => void;
-  /** 覆盖 config.model。 */
-  model?: string;
-  temperature?: number;
   /** 映射到请求体 max_tokens。 */
   maxTokens?: number;
   /** 单次尝试超时（毫秒）；默认 60000（推理型模型单次响应常 20–50s）。 */
@@ -81,20 +76,14 @@ export type ChatOptions = {
   maxRetries?: number;
   /** 调用方取消信号；与内部超时信号合并。 */
   signal?: AbortSignal;
+  /** 单请求总预算到期时刻（epoch ms）；用于把单次尝试超时收敛到剩余预算。 */
+  deadlineAt?: number;
 };
 
 const DEFAULT_TIMEOUT_MS = 60000;
 const DEFAULT_MAX_RETRIES = 1;
-
-// ---------------------------------------------------------------------------
-// 小工具
-// ---------------------------------------------------------------------------
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
+/** 重试前要求的最小剩余预算余量（毫秒）。 */
+const RETRY_BUDGET_MARGIN_MS = 5000;
 
 function asFiniteNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
@@ -118,8 +107,19 @@ function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
+/** 剩余总预算（毫秒）；无 deadlineAt 时返回 Infinity（不限）。 */
+function remainingBudget(deadlineAt: number | undefined): number {
+  return deadlineAt === undefined ? Number.POSITIVE_INFINITY : deadlineAt - Date.now();
+}
+
+/** 按剩余预算收敛的单次尝试超时。 */
+function effectiveTimeout(baseTimeout: number, remaining: number): number {
+  if (!Number.isFinite(remaining)) return baseTimeout;
+  return Math.max(1, Math.min(baseTimeout, remaining));
+}
+
 /**
- * 把 fetch / 流读取抛出的底层异常归一化为 LlmError。
+ * 把 fetch / 响应读取抛出的底层异常归一化为 LlmError。
  * 注意：先判定超时与调用方取消，再归为网络错误。
  */
 function mapTransportError(err: unknown, timedOut: boolean, callerAborted: boolean): LlmError {
@@ -128,6 +128,15 @@ function mapTransportError(err: unknown, timedOut: boolean, callerAborted: boole
   if (callerAborted) return new LlmError('aborted', '请求已被调用方取消', false);
   const detail = err instanceof Error ? err.message : String(err);
   return new LlmError('network_error', `网络请求失败：${truncate(detail, 200)}`, true);
+}
+
+/** 消费/取消响应体，使连接可归还连接池（P1-23）。 */
+async function discardBody(res: Response): Promise<void> {
+  try {
+    await res.body?.cancel();
+  } catch {
+    // 已消费 / 已关闭：忽略。
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -158,103 +167,14 @@ async function parseJsonResponse(res: Response, fallbackModel: string): Promise<
   };
 }
 
-async function parseSseResponse(
-  res: Response,
-  fallbackModel: string,
-  onDelta: ((delta: string) => void) | undefined
-): Promise<ChatResult> {
-  if (res.body === null) {
-    throw new LlmError('invalid_response', '上游流式响应为空', false);
-  }
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let content = '';
-  let model = '';
-  let finishReason: string | null = null;
-  let sawDone = false;
-  let sawInvalidFrame = false;
-
-  const handleLine = (rawLine: string): void => {
-    const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
-    if (!line.startsWith('data:')) return; // 忽略注释行 / 其它 SSE 字段
-    const payload = line.slice(5).trim();
-    if (payload === '') return;
-    if (payload === '[DONE]') {
-      sawDone = true;
-      return;
-    }
-    let chunk: unknown;
-    try {
-      chunk = JSON.parse(payload) as unknown;
-    } catch {
-      sawInvalidFrame = true;
-      return;
-    }
-    const root = asRecord(chunk);
-    if (typeof root.model === 'string' && root.model !== '') model = root.model;
-    const choices = Array.isArray(root.choices) ? root.choices : [];
-    const first = asRecord(choices[0]);
-    if (typeof first.finish_reason === 'string') finishReason = first.finish_reason;
-    const delta = asRecord(first.delta);
-    const piece = typeof delta.content === 'string' ? delta.content : '';
-    if (piece !== '') {
-      content += piece;
-      if (onDelta !== undefined) onDelta(piece);
-    }
-  };
-
-  try {
-    while (!sawDone) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let newlineIndex = buffer.indexOf('\n');
-      while (!sawDone && newlineIndex >= 0) {
-        const line = buffer.slice(0, newlineIndex);
-        buffer = buffer.slice(newlineIndex + 1);
-        handleLine(line);
-        newlineIndex = buffer.indexOf('\n');
-      }
-    }
-    // 冲刷解码器缓冲与最后一行（无尾随换行时）。
-    buffer += decoder.decode();
-    if (!sawDone && buffer.length > 0) handleLine(buffer);
-  } finally {
-    try {
-      reader.releaseLock();
-    } catch {
-      // 释放失败可忽略（连接可能已被上游关闭）。
-    }
-  }
-
-  if (sawInvalidFrame) {
-    throw new LlmError('invalid_response', '流式响应包含无法解析的 data 帧', false);
-  }
-  if (!sawDone) {
-    throw new LlmError('invalid_response', '流式响应未以 [DONE] 结束', false);
-  }
-  return {
-    content,
-    model: model !== '' ? model : fallbackModel,
-    finishReason,
-    usage: null,
-    streamed: true,
-  };
-}
-
 // ---------------------------------------------------------------------------
 // 单次尝试
 // ---------------------------------------------------------------------------
 
-async function attemptChat(
-  messages: ChatMessage[],
-  options: ChatOptions,
-  onDelta: ((delta: string) => void) | undefined
-): Promise<ChatResult> {
+async function attemptChat(messages: ChatMessage[], options: ChatOptions): Promise<ChatResult> {
   const cfg = options.config;
   const baseUrl = cfg.baseUrl.trim();
-  const model = (options.model ?? cfg.model).trim();
+  const model = cfg.model.trim();
 
   if (baseUrl === '') {
     throw new LlmError('invalid_config', 'LLM baseUrl 未配置', false);
@@ -263,22 +183,18 @@ async function attemptChat(
     throw new LlmError('invalid_config', 'LLM model 未配置', false);
   }
 
-  const stream = options.stream === true;
-  const timeoutMs =
+  const baseTimeout =
     typeof options.timeoutMs === 'number' && options.timeoutMs > 0
       ? options.timeoutMs
       : DEFAULT_TIMEOUT_MS;
+  const timeoutMs = effectiveTimeout(baseTimeout, remainingBudget(options.deadlineAt));
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (cfg.apiKey.trim() !== '') {
     headers.Authorization = `Bearer ${cfg.apiKey.trim()}`;
   }
-  if (stream) {
-    headers.Accept = 'text/event-stream';
-  }
 
-  const payload: Record<string, unknown> = { model, messages, stream };
-  if (typeof options.temperature === 'number') payload.temperature = options.temperature;
+  const payload: Record<string, unknown> = { model, messages };
   if (typeof options.maxTokens === 'number') payload.max_tokens = options.maxTokens;
   const body = JSON.stringify(payload);
 
@@ -308,14 +224,12 @@ async function attemptChat(
     }
 
     if (!res.ok) {
-      // 不回显上游响应体（可能包含提示词回显）；仅归一化状态。
+      await discardBody(res);
       throw new LlmError('upstream_error', `上游服务返回 HTTP ${res.status}`, res.status >= 500);
     }
 
     try {
-      return stream
-        ? await parseSseResponse(res, model, onDelta)
-        : await parseJsonResponse(res, model);
+      return await parseJsonResponse(res, model);
     } catch (err) {
       throw mapTransportError(err, timedOut, options.signal?.aborted === true);
     }
@@ -332,10 +246,10 @@ async function attemptChat(
 // ---------------------------------------------------------------------------
 
 /**
- * 调用 OpenAI 兼容的 `/chat/completions`。
+ * 调用 OpenAI 兼容的 `/chat/completions`（非流式）。
  *
  * @param messages 对话消息；不得为空。
- * @param options  配置（必填）+ 流式 / 超时 / 重试等。
+ * @param options  配置（必填）+ 超时 / 重试 / 取消 / 预算。
  * @returns ChatResult（含 content / model / finishReason / streamed）。
  * @throws LlmError 归一化错误（`{ code, message }`）。
  */
@@ -352,29 +266,29 @@ export async function chat(messages: ChatMessage[], options: ChatOptions): Promi
       : DEFAULT_MAX_RETRIES;
   const attempts = maxRetries + 1;
 
-  // 流式重试保护：一旦向调用方发出过增量，就不可重放，避免内容重复。
-  let emittedDelta = false;
-  const onDelta =
-    options.stream === true && options.onDelta !== undefined
-      ? (delta: string): void => {
-          emittedDelta = true;
-          options.onDelta?.(delta);
-        }
-      : options.onDelta;
-
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
-      return await attemptChat(messages, options, onDelta);
+      return await attemptChat(messages, options);
     } catch (err) {
       const normalized =
         err instanceof LlmError
           ? err
           : new LlmError('network_error', '请求失败（未知错误）', true);
       const isLastAttempt = attempt >= attempts - 1;
-      if (!normalized.retryable || isLastAttempt || emittedDelta) {
+      if (!normalized.retryable || isLastAttempt) {
         throw normalized;
       }
-      // 否则进行下一次（唯一一次）尝试。
+      const remaining = remainingBudget(options.deadlineAt);
+      if (Number.isFinite(remaining)) {
+        const baseTimeout =
+          typeof options.timeoutMs === 'number' && options.timeoutMs > 0
+            ? options.timeoutMs
+            : DEFAULT_TIMEOUT_MS;
+        const attemptTimeout = effectiveTimeout(baseTimeout, remaining);
+        if (remaining <= attemptTimeout + RETRY_BUDGET_MARGIN_MS) {
+          throw normalized;
+        }
+      }
     }
   }
 

@@ -16,18 +16,23 @@
 //                        artifacts/qa/25-failure.txt, exit 1 (failure-mode contract)
 
 import { createServer } from 'node:http';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
   conversationMessages,
+  getFreePort,
   listen,
   makeDetailRecord,
   makeLastLlmBody,
+  makeSpawnServer,
   readJsonBody,
   startLlmMock,
+  stopServer,
   systemContent,
+  waitForHealth,
 } from './lib/check-helpers.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -39,8 +44,11 @@ const failureMode = process.argv.includes('--simulate-failure');
 // ---------------------------------------------------------------------------
 
 const { ask } = await import(pathToFileURL(resolve(root, 'server/orchestrator.ts')).href);
-const { SAFETY_NOTICE, RED_FLAG_TERMS } = await import(
+const { SAFETY_NOTICE, RED_FLAG_TERMS, REDFLAG_PATTERN_SOURCES, NEGATION_PATTERN_SOURCES } = await import(
   pathToFileURL(resolve(root, 'server/redflags.ts')).href
+);
+const { firstBannedDecisionTerm } = await import(
+  pathToFileURL(resolve(root, 'server/validate.ts')).href
 );
 const { CONSULT_DISCLAIMER, CONTROLLED_DEPARTMENTS, LIMITS } = await import(
   pathToFileURL(resolve(root, 'server/prompts.ts')).href
@@ -377,17 +385,81 @@ llm.state.content = JSON.stringify(
   );
 }
 
-// 8) banned 拨打 120 -> unsafe_output, no echo.
+// 8) 拨打/120 共现规则（P1-8）：无急救线索 → unsafe_output；含急救线索 → 放行。
+//    旧行为是全局禁止「拨打/120」，使产品在任何路径都无法给出呼叫 120 的引导，故更改。
 resetMocks();
 searchMock.state.results = [SRC_NHC];
 llm.state.content = JSON.stringify(
-  consultOk({ directions: [{ text: '请拨打 120 急救', citation: SRC_NHC.url }] })
+  consultOk({ directions: [{ text: '请拨打 120', citation: SRC_NHC.url }] })
 );
 {
   const res = await ask(request({ mode: 'consult' }), { config: makeConfig() });
   record(
-    'consult: model says「拨打 120」-> unsafe_output, no echo of 拨打/120',
+    'consult: model says「拨打 120」without an emergency cue -> unsafe_output, no echo of 拨打/120',
     isUnsafe(res) && !JSON.stringify(res).includes('拨打') && !JSON.stringify(res).includes('120'),
+    { response: res }
+  );
+}
+
+// 8b) 含急救线索（立即/急诊/急救）时「拨打 120」放行 —— 产品可给正确急救引导。
+resetMocks();
+searchMock.state.results = [SRC_NHC];
+llm.state.content = JSON.stringify(
+  consultOk({ directions: [{ text: '立即拨打 120 急救', citation: SRC_NHC.url }] })
+);
+{
+  const res = await ask(request({ mode: 'consult' }), { config: makeConfig() });
+  record(
+    'consult: 「立即拨打 120 急救」with emergency cue -> allowed (valid consult, cue makes it safe)',
+    !('error' in res) &&
+      Array.isArray(res.directions) &&
+      res.directions.length === 1 &&
+      res.directions[0].text === '立即拨打 120 急救',
+    { response: res }
+  );
+}
+
+// 8c) P1-8 tightening：弱线索「尽快」不再豁免 —— 「尽快拨打120」无强急救线索 → unsafe_output。
+resetMocks();
+searchMock.state.results = [SRC_NHC];
+llm.state.content = JSON.stringify(
+  consultOk({ directions: [{ text: '尽快拨打120', citation: SRC_NHC.url }] })
+);
+{
+  const res = await ask(request({ mode: 'consult' }), { config: makeConfig() });
+  record(
+    'consult: 「尽快拨打120」-> unsafe_output (weak cue 尽快 dropped from the exemption)',
+    isUnsafe(res) && !JSON.stringify(res).includes('拨打'),
+    { response: res }
+  );
+}
+
+// 8d) P1-8 tightening：分句内共现 —— 「不要拨打120，立即就医」的线索在另一分句，不能豁免否定呼叫。
+resetMocks();
+searchMock.state.results = [SRC_NHC];
+llm.state.content = JSON.stringify(
+  consultOk({ directions: [{ text: '不要拨打120，立即就医', citation: SRC_NHC.url }] })
+);
+{
+  const res = await ask(request({ mode: 'consult' }), { config: makeConfig() });
+  record(
+    'consult: 「不要拨打120，立即就医」-> unsafe_output (cue in another clause must not excuse a negated call)',
+    isUnsafe(res) && !JSON.stringify(res).includes('拨打'),
+    { response: res }
+  );
+}
+
+// 8e) P1-8 tightening：同句否定守卫 —— 分句内虽有强线索，但呼叫被「不要」紧邻否定，仍拦截。
+resetMocks();
+searchMock.state.results = [SRC_NHC];
+llm.state.content = JSON.stringify(
+  consultOk({ directions: [{ text: '不要立即拨打120', citation: SRC_NHC.url }] })
+);
+{
+  const res = await ask(request({ mode: 'consult' }), { config: makeConfig() });
+  record(
+    'consult: 「不要立即拨打120」-> unsafe_output (negation guard overrides a same-clause cue)',
+    isUnsafe(res) && !JSON.stringify(res).includes('拨打'),
     { response: res }
   );
 }
@@ -532,6 +604,84 @@ resetMocks();
     'redflag: all 8 plan terms fire with fixed notice, no department/direction, zero upstream (per-sample)',
     perSample.every(sampleOk),
     { samples, per_sample: perSample }
+  );
+}
+
+// 15b) redflag 否定处理（P1-7）：否定式提及不短路（旧实现「没有胸痛」会命中并整单短路）。
+resetMocks();
+llm.state.content = JSON.stringify(ORGANIZE_OK);
+{
+  const negatives = [
+    '我没有胸痛，只是有点累',
+    '无呼吸困难',
+    '不伴抽搐',
+    '未见大出血',
+    '否认晕厥',
+  ];
+  const perSample = [];
+  for (const content of negatives) {
+    resetMocks();
+    llm.state.content = JSON.stringify(ORGANIZE_OK);
+    // eslint-disable-next-line no-await-in-loop
+    const res = await ask(
+      request({ mode: 'organize', messages: [{ role: 'user', content }] }),
+      { config: makeConfig() }
+    );
+    perSample.push({
+      content,
+      redFlag: res.redFlag === true,
+      llm_calls: llm.state.requests.length,
+    });
+  }
+  record(
+    'redflag negation: negated mentions (没有/无/不伴/未见/否认) do NOT short-circuit; LLM is consulted',
+    perSample.every((s) => s.redFlag === false && s.llm_calls === 1),
+    { per_sample: perSample }
+  );
+}
+
+// 15c) redflag 扩充类目（P1-7）：口语化危重信号可命中（每例零 LLM/零搜索短路）。
+resetMocks();
+{
+  const samples = ['我突然喘不上气', '他昏迷了叫不醒', '心跳骤停', '出血不止', '一侧无力', '剧烈腹痛'];
+  const perSample = [];
+  for (const content of samples) {
+    resetMocks();
+    // eslint-disable-next-line no-await-in-loop
+    const res = await ask(
+      request({ mode: 'consult', messages: [{ role: 'user', content }] }),
+      { config: makeConfig() }
+    );
+    perSample.push({
+      content,
+      redFlag: res.redFlag === true,
+      fixed_notice: res.safetyNotice === SAFETY_NOTICE,
+      zero_upstream: llm.state.requests.length === 0 && searchMock.state.requests.length === 0,
+    });
+  }
+  record(
+    'redflag expanded categories: colloquial critical signals (喘不上气/昏迷/心跳骤停/出血不止/一侧无力/剧烈腹痛) fire',
+    perSample.every((s) => s.redFlag && s.fixed_notice && s.zero_upstream),
+    { per_sample: perSample }
+  );
+}
+
+// 15d) 词表导出与固定句（P1-7/P1-8）：两个数组非空；SAFETY_NOTICE 通过受限词门（含 120 但带急救线索）。
+{
+  const arraysOk =
+    Array.isArray(REDFLAG_PATTERN_SOURCES) &&
+    REDFLAG_PATTERN_SOURCES.length >= 20 &&
+    Array.isArray(NEGATION_PATTERN_SOURCES) &&
+    NEGATION_PATTERN_SOURCES.length >= 4;
+  const noticePassesGate = firstBannedDecisionTerm(SAFETY_NOTICE) === null;
+  record(
+    'redflag exports: REDFLAG_PATTERN_SOURCES/NEGATION_PATTERN_SOURCES present; SAFETY_NOTICE passes decision-term gate (拨打/120 + cue)',
+    arraysOk && noticePassesGate,
+    {
+      pattern_count: REDFLAG_PATTERN_SOURCES?.length,
+      negation_count: NEGATION_PATTERN_SOURCES?.length,
+      notice_gate: firstBannedDecisionTerm(SAFETY_NOTICE),
+    }
   );
 }
 
@@ -868,6 +1018,155 @@ llm.state.content = JSON.stringify({
     isUnsafe(res),
     { response: res }
   );
+}
+
+// 37) P1-16: extracted subfield type mismatch is visible (unsafe_output), never silently dropped.
+resetMocks();
+llm.state.content = JSON.stringify({
+  ...ORGANIZE_OK,
+  extracted: {
+    symptoms: ['头痛'],
+    medications: [{ name: '布洛芬' }],
+    allergies: '青霉素',
+    history: [],
+    exams: [],
+  },
+});
+{
+  const res = await ask(request({ mode: 'organize' }), { config: makeConfig() });
+  record(
+    'p1-16 extracted subfield type mismatch -> unsafe_output (allergies/medications not silently dropped)',
+    isUnsafe(res),
+    { response: res }
+  );
+}
+
+// 38) P1-10: prohibited-claim gate now covers extracted.* and questions (clause-based neutral rule).
+resetMocks();
+llm.state.content = JSON.stringify({
+  ...ORGANIZE_OK,
+  extracted: { symptoms: ['确诊为流感'], medications: [], allergies: [], history: [], exams: [] },
+});
+{
+  const res = await ask(request({ mode: 'organize' }), { config: makeConfig() });
+  record('p1-10 rendered gate: extracted.symptoms「确诊为流感」-> unsafe_output', isUnsafe(res), {
+    response: res,
+  });
+}
+resetMocks();
+llm.state.content = JSON.stringify({ ...ORGANIZE_OK, questions: ['尚待确认，确诊为流感'] });
+{
+  const res = await ask(request({ mode: 'organize' }), { config: makeConfig() });
+  record(
+    'p1-10 clause rule: 「尚待确认，确诊为…」in questions still degrades (old ±8 window bypass fixed)',
+    isUnsafe(res),
+    { response: res }
+  );
+}
+resetMocks();
+llm.state.content = JSON.stringify({ ...ORGANIZE_OK, questions: ['是否确诊过类似情况？'] });
+{
+  const res = await ask(request({ mode: 'organize' }), { config: makeConfig() });
+  record(
+    'p1-10 legitimate gap restatement「是否确诊过…」in questions does NOT degrade',
+    !('error' in res) && Array.isArray(res.questions),
+    { response: res }
+  );
+}
+
+// 39) P1-14: search degraded surfaces a machine-readable reason and empties unsourced departments.
+resetMocks();
+searchMock.state.mode = 'always-500';
+llm.state.content = JSON.stringify({
+  directions: [],
+  suggestedDepartments: ['全科'],
+  suggestions: [],
+  unknowns: [],
+  questions: [],
+});
+{
+  const res = await ask(request({ mode: 'consult' }), { config: makeConfig() });
+  record(
+    'p1-14 search unavailable -> degraded=search_unavailable + suggestedDepartments=[] (no normal-result shape)',
+    !('error' in res) &&
+      res.degraded === 'search_unavailable' &&
+      Array.isArray(res.suggestedDepartments) &&
+      res.suggestedDepartments.length === 0,
+    { response: res }
+  );
+}
+
+// 40) P1-15: citation URL normalization (scheme-less / uppercase / trailing slash) still resolves.
+resetMocks();
+searchMock.state.results = [SRC_NHC];
+llm.state.content = JSON.stringify(
+  consultOk({ directions: [{ text: '注意休息', citation: 'NHC.GOV.CN/tips/1' }] })
+);
+{
+  const res = await ask(request({ mode: 'consult' }), { config: makeConfig() });
+  record(
+    'p1-15 normalized citation (scheme-less/uppercase) resolves instead of unsafe_output',
+    !('error' in res) && Array.isArray(res.directions) && res.directions.length === 1,
+    { response: res }
+  );
+}
+
+// 41) P0-4: a hanging mock upstream yields 504 {ok:false, error:'deadline_exceeded'} within the budget.
+{
+  const port = await getFreePort();
+  const spawnServer = makeSpawnServer(root);
+  const hang = await listen(
+    createServer((req, res) => {
+      req.on('data', () => {});
+      req.on('end', () => {
+        // 永不响应：模拟挂死的上游。
+      });
+    }),
+    'hang-mock',
+    {}
+  );
+  const cfgPath = join(tmpdir(), `mhp-ask-deadline-${process.pid}-${Date.now()}.json`);
+  writeFileSync(
+    cfgPath,
+    JSON.stringify({
+      port,
+      demo: false,
+      llm: { baseUrl: hang.baseUrl, apiKey: 'sk-hang', model: 'hang-model' },
+      search: { baseUrl: '', apiKey: '' },
+      authorityDomains: [],
+    })
+  );
+  process.env.MHP_TOTAL_DEADLINE_MS = '700';
+  const started = spawnServer(cfgPath);
+  try {
+    const health = await waitForHealth(port);
+    const t0 = Date.now();
+    const res = await fetch(`http://127.0.0.1:${port}/api/ask`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        mode: 'organize',
+        messages: [{ role: 'user', content: '你好' }],
+        consent: true,
+      }),
+    });
+    const body = await res.json();
+    const elapsed = Date.now() - t0;
+    record(
+      'p0-4 hanging upstream -> HTTP 504 {ok:false,error:deadline_exceeded} within the total budget',
+      health.status === 200 &&
+        res.status === 504 &&
+        body.ok === false &&
+        body.error === 'deadline_exceeded' &&
+        elapsed < 10000,
+      { status: res.status, body, elapsed_ms: elapsed }
+    );
+  } finally {
+    await stopServer(started.child);
+    await hang.close();
+    delete process.env.MHP_TOTAL_DEADLINE_MS;
+    rmSync(cfgPath, { force: true });
+  }
 }
 
 // ---------------------------------------------------------------------------

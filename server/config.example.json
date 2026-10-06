@@ -2,12 +2,12 @@
   "port": 8787,
   "demo": false,
   "llm": {
-    "baseUrl": "https://api.example.com/v1",
+    "baseUrl": "",
     "apiKey": "",
-    "model": "replace-me"
+    "model": ""
   },
   "search": {
-    "baseUrl": "https://search.example.com",
+    "baseUrl": "",
     "apiKey": ""
   },
   "authorityDomains": [

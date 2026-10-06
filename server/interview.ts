@@ -28,13 +28,11 @@
 
 import type { ChatMessage } from './providers/llm.ts';
 import { chat } from './providers/llm.ts';
-import { loadConfig } from './config.ts';
+import { asRecord, isLlmConfigured, loadConfig } from './config.ts';
 import type { ServerConfig } from './config.ts';
 import { CONSULT_DISCLAIMER, INTERVIEW_SLOTS, LIMITS, buildInterviewSystemPrompt } from './prompts.ts';
-import { DECISION_TERMS } from './validate.ts';
+import { DECISION_TERMS, normalizeMessages, parseJsonContent } from './validate.ts';
 import { SAFETY_NOTICE, detectRedFlag } from './redflags.ts';
-
-const ROLES: readonly string[] = ['user', 'assistant', 'system'];
 
 export type InterviewQuestion = {
   text: string;
@@ -75,35 +73,17 @@ export type InterviewOptions = {
   timeoutMs?: number;
   /** 调用方取消信号。 */
   signal?: AbortSignal;
+  /** 单请求总预算到期时刻（epoch ms）。 */
+  deadlineAt?: number;
 };
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
-function failed(reason: InterviewReason): InterviewResponse {
-  return { status: 'failed', reason };
-}
 
 /** 可选字段：undefined 或纯字符串数组。 */
 function isStringArrayOrUndefined(value: unknown): value is string[] | undefined {
   return value === undefined || (Array.isArray(value) && value.every((item) => typeof item === 'string'));
 }
 
-/** 消息数组规范化：非空、每项为对象且 role 合法、content 为字符串；否则 null。 */
-function normalizeMessages(value: unknown): ChatMessage[] | null {
-  if (!Array.isArray(value) || value.length === 0) return null;
-  const out: ChatMessage[] = [];
-  for (const item of value) {
-    if (item === null || typeof item !== 'object') return null;
-    const rec = item as Record<string, unknown>;
-    if (typeof rec.role !== 'string' || !ROLES.includes(rec.role)) return null;
-    if (typeof rec.content !== 'string') return null;
-    out.push({ role: rec.role as ChatMessage['role'], content: rec.content });
-  }
-  return out;
+function failed(reason: InterviewReason): InterviewResponse {
+  return { status: 'failed', reason };
 }
 
 /** 上下文合计 ≤ maxInterviewChars：从最早丢弃，剩余单条超大则硬截断。 */
@@ -128,19 +108,6 @@ function resolveRound(value: unknown, messages: readonly ChatMessage[]): number 
     if (message.role === 'assistant') count += 1;
   }
   return count;
-}
-
-/** 严格 JSON 解析；容忍外层 ```json 围栏；失败返回 null。 */
-function parseJsonContent(content: string): { ok: true; value: unknown } | null {
-  let text = content.trim();
-  if (text === '') return null;
-  const fence = /^```[a-zA-Z0-9]*\s*([\s\S]*?)\s*```$/.exec(text);
-  if (fence !== null) text = fence[1].trim();
-  try {
-    return { ok: true, value: JSON.parse(text) as unknown };
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -185,7 +152,7 @@ async function runInterview(
   }
 
   const config = options.config ?? loadConfig();
-  if (config.llm.baseUrl.trim() === '' || config.llm.model.trim() === '') {
+  if (!isLlmConfigured(config.llm)) {
     return failed('provider_not_configured');
   }
 
@@ -205,10 +172,10 @@ async function runInterview(
   try {
     const result = await chat(outMessages, {
       config: config.llm,
-      stream: false,
       maxTokens,
       timeoutMs: options.timeoutMs,
       signal: options.signal,
+      deadlineAt: options.deadlineAt,
     });
     content = result.content;
   } catch {

@@ -1,9 +1,7 @@
 {
-  "version": 1,
-  "description": "确定性演示 fixtures（任务 26）。demo=true 时 POST /api/ask 直接返回本文件内容，全程零网络。consult.response 的 citation 必须能由 consult.sources + 权威域名校验通过；redflag 的两个固定句必须与 server/redflags.ts 的 SAFETY_NOTICE、server/prompts.ts 的 CONSULT_DISCLAIMER 逐字一致（scripts/check-demo.mjs 会断言）。本文件只含合成的演示数据，无任何真实患者信息、无时间戳。",
   "redflag": {
     "redFlag": true,
-    "safetyNotice": "您描述的情况可能需要尽快就医。本助手不提供任何医疗判断或建议，请立即联系医生或前往就近医疗机构。",
+    "safetyNotice": "您描述的情况可能需要尽快就医。本助手不提供任何医疗判断或建议。请立即拨打 120 或前往最近医院急诊，不要只依赖本工具。",
     "disclaimer": "以上内容仅为信息整理与一般性提示，不构成诊断或治疗建议；如有不适请及时就医。"
   },
   "organize": {

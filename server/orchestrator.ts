@@ -31,21 +31,19 @@
 
 import type { ChatMessage } from './providers/llm.ts';
 import { LlmError, chat } from './providers/llm.ts';
-import type { SearchResult } from './providers/search.ts';
+import type { SearchReason, SearchResult } from './providers/search.ts';
 import { search } from './providers/search.ts';
 import { resolveAuthorityDomains } from './authorities.ts';
-import { loadConfig } from './config.ts';
+import { isLlmConfigured, loadConfig } from './config.ts';
 import type { ServerConfig } from './config.ts';
 import { SAFETY_NOTICE, detectRedFlag } from './redflags.ts';
 import { CONSULT_DISCLAIMER, LIMITS, buildSystemPrompt } from './prompts.ts';
 import type { AskMode } from './prompts.ts';
-import { validateConsultOutput, validateOrganizeOutput } from './validate.ts';
+import { normalizeMessages, parseJsonContent, validateConsultOutput, validateOrganizeOutput } from './validate.ts';
 import type { ConsultResult, OrganizeResult } from './validate.ts';
 
 export type { AskMode } from './prompts.ts';
 export type { Citation, ConsultResult, OrganizeResult } from './validate.ts';
-
-const ROLES: readonly string[] = ['user', 'assistant', 'system'];
 
 export type AskRequest = {
   mode: AskMode;
@@ -69,10 +67,10 @@ export type AskOptions = {
   maxTokens?: number;
   /** 覆盖上游超时（毫秒）。 */
   timeoutMs?: number;
-  /** 搜索上游 limit。 */
-  searchLimit?: number;
-  /** 调用方取消信号（同时用于搜索与 LLM）。 */
+  /** 调用方取消信号（同时用于搜索与 LLM；客户端断连时及时释放上游）。 */
   signal?: AbortSignal;
+  /** 单请求总预算到期时刻（epoch ms）；provider 据此计算剩余预算。 */
+  deadlineAt?: number;
 };
 
 export type AskErrorCode =
@@ -111,21 +109,6 @@ function isStringArrayOrUndefined(value: unknown): value is string[] | undefined
   );
 }
 
-function normalizeMessages(value: unknown): ChatMessage[] | null {
-  if (!Array.isArray(value) || value.length === 0) return null;
-  const out: ChatMessage[] = [];
-  for (const item of value) {
-    if (item === null || typeof item !== 'object') return null;
-    const rec = item as Record<string, unknown>;
-    const role = rec.role;
-    const content = rec.content;
-    if (typeof role !== 'string' || !ROLES.includes(role)) return null;
-    if (typeof content !== 'string') return null;
-    out.push({ role: role as ChatMessage['role'], content });
-  }
-  return out;
-}
-
 /** 会话窗口：保留最近 ≤20 条，再从最早丢弃直到合计 ≤8K 字符；单条超大则硬截断。 */
 function windowMessages(messages: readonly ChatMessage[]): ChatMessage[] {
   const tail = messages.slice(-LIMITS.maxTurns);
@@ -151,19 +134,6 @@ function deriveQuery(messages: readonly ChatMessage[]): string {
     }
   }
   return '';
-}
-
-/** 严格 JSON 解析；容忍外层 ```json 围栏；失败返回 null。 */
-function parseJsonContent(content: string): { ok: true; value: unknown } | null {
-  let text = content.trim();
-  if (text === '') return null;
-  const fence = /^```[a-zA-Z0-9]*\s*([\s\S]*?)\s*```$/.exec(text);
-  if (fence !== null) text = fence[1].trim();
-  try {
-    return { ok: true, value: JSON.parse(text) as unknown };
-  } catch {
-    return null;
-  }
 }
 
 function errorResult(error: AskErrorCode, message: string): AskError {
@@ -225,22 +195,24 @@ async function runAsk(request: AskRequest, options: AskOptions): Promise<AskResp
     return { redFlag: true, safetyNotice: SAFETY_NOTICE, disclaimer: CONSULT_DISCLAIMER };
   }
 
-  if (config.llm.baseUrl.trim() === '' || config.llm.model.trim() === '') {
-    return errorResult('provider_not_configured', 'LLM 未配置（baseUrl 或 model 为空）');
+  if (!isLlmConfigured(config.llm)) {
+    return errorResult('provider_not_configured', 'LLM 未配置（baseUrl/model/apiKey 为空或为占位示例域名）');
   }
 
-  // 搜索：organize 0 次；consult 至多 1 次。
+  // 搜索：organize 0 次；consult 至多 1 次。reason 用于向客户端标记降级（P1-14）。
   let sources: SearchResult[] = [];
+  let searchReason: SearchReason = 'no_results';
   if (mode === 'consult') {
     const query = deriveQuery(windowed);
     if (query !== '') {
       const response = await search(query, {
         config: config.search,
         authorityDomains,
-        limit: options.searchLimit,
         signal: options.signal,
+        deadlineAt: options.deadlineAt,
       });
       sources = response.results;
+      searchReason = response.reason ?? 'no_results';
     }
   }
 
@@ -260,10 +232,10 @@ async function runAsk(request: AskRequest, options: AskOptions): Promise<AskResp
   try {
     const result = await chat(outMessages, {
       config: config.llm,
-      stream: false,
       maxTokens,
       timeoutMs: options.timeoutMs,
       signal: options.signal,
+      deadlineAt: options.deadlineAt,
     });
     content = result.content;
   } catch (err) {
@@ -279,7 +251,12 @@ async function runAsk(request: AskRequest, options: AskOptions): Promise<AskResp
     return validated.ok ? validated.value : unsafeResult();
   }
   const validated = validateConsultOutput(parsed.value, { sources, authorityDomains });
-  return validated.ok ? validated.value : unsafeResult();
+  if (!validated.ok) return unsafeResult();
+  if (searchReason !== 'no_results' || sources.length === 0) {
+    // 检索不可用/零命中/全非权威：标记降级并清空无来源的科室建议（P1-14）。
+    return { ...validated.value, suggestedDepartments: [], degraded: searchReason };
+  }
+  return validated.value;
 }
 
 /**

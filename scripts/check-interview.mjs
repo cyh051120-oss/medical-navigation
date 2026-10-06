@@ -400,6 +400,41 @@ const record = makeDetailRecord(cases);
   record('redflag_ignores_assistant', res.status === 'ask', { res });
 }
 
+// 16b. red flag negation (P1-7): negated mention does NOT short-circuit; LLM still consulted
+{
+  resetMock();
+  llm.state.content = askJson('大概持续多久了？', 'duration');
+  const res = await interview(
+    request({ messages: [{ role: 'user', content: '我没有胸痛，只是最近有点累' }] }),
+    { config: makeConfig() }
+  );
+  record(
+    'redflag_negation_does_not_short_circuit',
+    res.status === 'ask' && llm.state.requests.length === 1,
+    { res, llm_requests: llm.state.requests.length }
+  );
+}
+
+// 16c. red flag expanded categories (P1-7): colloquial critical signals fire, zero LLM
+{
+  const samples = ['突然喘不上气', '昏迷叫不醒', '心跳骤停', '出血不止'];
+  const perSample = [];
+  for (const content of samples) {
+    resetMock();
+    // eslint-disable-next-line no-await-in-loop
+    const res = await interview(
+      request({ messages: [{ role: 'user', content }] }),
+      { config: makeConfig() }
+    );
+    perSample.push({ content, redFlag: res.redFlag === true, llm_requests: llm.state.requests.length });
+  }
+  record(
+    'redflag_expanded_categories',
+    perSample.every((s) => s.redFlag && s.llm_requests === 0),
+    { per_sample: perSample }
+  );
+}
+
 // 17. context cap
 {
   resetMock();
@@ -481,8 +516,9 @@ mockProc.stderr.on('data', (chunk) => {
 async function waitForMock(port, timeoutMs = 10000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
+    let res = null;
     try {
-      const res = await fetch(`http://127.0.0.1:${port}/search`, {
+      res = await fetch(`http://127.0.0.1:${port}/search`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: '{"q":"x","limit":1}',
@@ -490,6 +526,15 @@ async function waitForMock(port, timeoutMs = 10000) {
       if (res.status > 0) return true;
     } catch {
       // not listening yet
+    } finally {
+      // Release the response body on every path, or undici strands one socket per poll attempt.
+      if (res !== null) {
+        try {
+          await res.body?.cancel();
+        } catch {
+          // Body already consumed or connection closed; nothing left to release.
+        }
+      }
     }
     await delay(150);
   }

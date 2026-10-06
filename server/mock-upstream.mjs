@@ -3,7 +3,7 @@
 // 独立、零依赖的 mock 上游服务（任务 26），供 E2E（任务 33）与检查脚本本地替换真实上游使用。
 //
 // 提供两个端点（只绑定 127.0.0.1）：
-//   POST /chat/completions  —— OpenAI 兼容；非流式 JSON，`stream:true` 时回 SSE（可选能力）。
+//   POST /chat/completions  —— OpenAI 兼容；非流式 JSON。
 //   POST /search            —— 任务 24 冻结的自定义搜索契约 { results: [{title,url,snippet,publishedAt?}] }。
 // 两个端点同一端口、同一 baseUrl；config 的 llm.baseUrl 与 search.baseUrl 都可指向它。
 //
@@ -150,27 +150,6 @@ function chatPayload(content) {
   };
 }
 
-/** SSE 帧（仅在请求 stream:true 时使用）；切片确定性，供流式解析测试。 */
-function sendSse(res, content) {
-  res.statusCode = 200;
-  res.setHeader('content-type', 'text/event-stream; charset=utf-8');
-  res.setHeader('cache-control', 'no-cache');
-  res.setHeader('connection', 'keep-alive');
-  const frame = (obj) => `data: ${JSON.stringify(obj)}\n\n`;
-  const chunk = (piece, finish) => ({
-    id: 'chatcmpl-mock',
-    object: 'chat.completion.chunk',
-    created: 0,
-    model: 'mock-model',
-    choices: [{ index: 0, delta: piece === '' ? {} : { content: piece }, finish_reason: finish }],
-  });
-  const mid = Math.ceil(content.length / 2);
-  res.write(frame(chunk(content.slice(0, mid), null)));
-  res.write(frame(chunk(content.slice(mid), 'stop')));
-  res.write('data: [DONE]\n\n');
-  res.end();
-}
-
 // ---------------------------------------------------------------------------
 // 服务
 // ---------------------------------------------------------------------------
@@ -200,11 +179,7 @@ const server = createServer((req, res) => {
     if (path === '/chat/completions') {
       const messages = body && Array.isArray(body.messages) ? body.messages : [];
       const content = pickContent(messages);
-      if (body && body.stream === true) {
-        sendSse(res, content);
-      } else {
-        sendJson(res, 200, chatPayload(content));
-      }
+      sendJson(res, 200, chatPayload(content));
       return;
     }
 
@@ -229,7 +204,13 @@ server.listen(resolvePort(), '127.0.0.1', () => {
 
 function shutdown(signal) {
   console.log(`[mock-upstream] received ${signal}, closing…`);
-  server.close(() => process.exit(0));
+  const force = setTimeout(() => process.exit(1), 3000);
+  force.unref();
+  if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
+  server.close(() => {
+    clearTimeout(force);
+    process.exit(0);
+  });
 }
 
 process.on('SIGINT', () => shutdown('SIGINT'));

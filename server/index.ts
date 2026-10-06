@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 // server/index.ts
-// 本地 AI 代理 —— HTTP 装配层（任务 22 骨架；任务 26 接线 POST /api/ask）。
+// 本地 AI 代理 —— HTTP 装配层。
 //
 // 目标：
 //   - 仅绑定 127.0.0.1（本机回环），绝不对外网暴露。
 //   - 零依赖：只用 Node 内置模块（node:http / node:fs / node:path / node:url）。
-//   - GET  /api/health     返回 { ok, providerReady, searchReady, demo }。
-//   - POST /api/ask        薄处理器：demo 分支零网络返回 fixtures；否则委托 orchestrator。
-//   - POST /api/extract-memory 薄处理器：demo 分支零网络返回 fixtures；否则委托 extract-memory。
+//   - GET  /api/health          返回 { ok, providerReady, searchReady, demo, demoMode }。
+//   - POST /api/ask             薄处理器：demo 分支零网络返回 fixtures；否则委托 orchestrator。
+//   - POST /api/extract-memory  薄处理器：demo 分支零网络返回 fixtures；否则委托 extract-memory。
+//   - POST /api/interview       薄处理器：demo 分支零网络返回 fixtures；否则委托 interview。
 //   - 配置来自 server/config.json（gitignored）；可用环境变量 MHP_CONFIG_PATH 覆盖（测试用）。
 //
 // 运行（Node >= 24，原生类型擦除直跑，无需构建）：
@@ -20,7 +21,14 @@
 //   - 非法 JSON → 400 {error:'invalid_request'}。
 //   - 业务结果（成功 / 错误信封 / 红标）一律 HTTP 200（错误码在 body 的 error 字段）。
 //   - demo=true  → 零网络、始终返回 server/demo-fixtures.json 的确定性内容（即使配置了 key）。
-//   - demo=false → await ask(body, { config })；未配置 LLM 时其内部先返回 provider_not_configured，零外呼。
+//   - demo=false → await ask(body, { config, signal, deadlineAt })；未配置 LLM 时其内部先返回 provider_not_configured，零外呼。
+//
+// 总预算（P0-4）：
+//   - 每个路由都受 TOTAL_DEADLINE_MS 总预算约束；超时返回 504 {ok:false, error:'deadline_exceeded'}。
+//   - req 关闭（客户端断连）→ AbortController.abort()，把取消一路传到搜索 / LLM（P1-22）。
+//
+// 边界（P1-29）：CORS 仅允许本地回环 Origin（或 config.corsOrigins 显式清单）；
+//   Host 头必须是本机；POST JSON 路由要求 Content-Type: application/json。
 //
 // 本文件遵循 server/tsconfig.json 约束：可擦除语法（无 enum/namespace/参数属性）、
 // 相对导入写显式 .ts 扩展名、仅类型导入使用 `import type`。
@@ -30,7 +38,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadConfig } from './config.ts';
+import { isLlmConfigured, isSearchConfigured, loadConfig, resolveTotalDeadlineMs } from './config.ts';
 import type { ServerConfig } from './config.ts';
 import { ask } from './orchestrator.ts';
 import type { AskRequest, AskResponse } from './orchestrator.ts';
@@ -48,6 +56,9 @@ const HOST = '127.0.0.1';
 
 /** POST /api/ask 请求体上限（字节）。超限直接 413，不读取更多数据。 */
 const MAX_BODY_BYTES = 64 * 1024;
+
+/** 允许非回环但显式放行的 Origin host（微信开发者工具 / 关联域）。 */
+const WECHAT_ORIGIN_SUFFIXES: readonly string[] = ['servicewechat.com', 'qq.com'];
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURES_PATH = resolve(__dirname, 'demo-fixtures.json');
@@ -79,63 +90,86 @@ type DemoFixtures = {
 const FIXTURES = JSON.parse(readFileSync(FIXTURES_PATH, 'utf8')) as DemoFixtures;
 
 // ---------------------------------------------------------------------------
-// 健康检查派生字段（只反映“是否配置了 key”，绝不回显 key 本身）
+// 健康检查派生字段（只反映“是否可用”，绝不回显 key 本身）
 // ---------------------------------------------------------------------------
-
-function hasKey(value: string): boolean {
-  return value.trim().length > 0;
-}
 
 function buildHealth(config: ServerConfig): {
   ok: true;
   providerReady: boolean;
   searchReady: boolean;
   demo: boolean;
+  demoMode: boolean;
 } {
   return {
     ok: true,
-    providerReady: hasKey(config.llm.apiKey),
-    searchReady: hasKey(config.search.apiKey),
+    providerReady: isLlmConfigured(config.llm),
+    searchReady: isSearchConfigured(config.search),
     demo: config.demo,
+    demoMode: config.demo,
   };
 }
 
 // ---------------------------------------------------------------------------
-// 请求体读取（带上限）
+// 请求体读取（带上限；413 时排空并摘除监听器，P1-25）
 // ---------------------------------------------------------------------------
 
 type ReadBodyResult =
   | { ok: true; text: string }
-  | { ok: false; reason: 'payload_too_large' | 'read_error' };
+  | { ok: false; reason: 'payload_too_large' | 'read_error' | 'deadline_exceeded' };
 
-function readBody(req: IncomingMessage): Promise<ReadBodyResult> {
+/**
+ * 读取请求体（带上限与总预算）。
+ * 预算从请求派发时开始计时：慢速上传同样消耗 TOTAL_DEADLINE_MS，超预算 → deadline_exceeded。
+ */
+function readBody(req: IncomingMessage, deadlineAt: number): Promise<ReadBodyResult> {
   return new Promise((resolveBody) => {
     const chunks: Buffer[] = [];
     let size = 0;
     let settled = false;
+    let timer: NodeJS.Timeout | undefined;
     const settle = (result: ReadBodyResult): void => {
       if (settled) return;
       settled = true;
+      if (timer !== undefined) clearTimeout(timer);
+      req.removeListener('data', onData);
+      req.removeListener('end', onEnd);
       resolveBody(result);
     };
 
-    req.on('data', (chunk: Buffer) => {
+    const onData = (chunk: Buffer): void => {
       if (settled) return;
       size += chunk.length;
       if (size > MAX_BODY_BYTES) {
-        // 停止消费但绝不 req.destroy()：同步销毁 socket 会让调用方在 413 信封写出前收到连接重置。
         settle({ ok: false, reason: 'payload_too_large' });
-        req.pause();
+        // 通过 settle 已摘除 data/end 监听器；保留 error 监听器（onError 会重新入队，settle 幂等），
+        // 再排空剩余字节，避免 413 信封送达前连接被未读数据阻塞。
+        req.resume();
         return;
       }
       chunks.push(chunk);
-    });
-    req.on('end', () => {
+    };
+    const onEnd = (): void => {
       settle({ ok: true, text: Buffer.concat(chunks).toString('utf8') });
-    });
-    req.on('error', () => {
+    };
+    const onError = (): void => {
       settle({ ok: false, reason: 'read_error' });
-    });
+    };
+
+    req.on('data', onData);
+    req.on('end', onEnd);
+    req.on('error', onError);
+
+    const remaining = deadlineAt - Date.now();
+    if (remaining <= 0) {
+      settle({ ok: false, reason: 'deadline_exceeded' });
+      req.resume();
+      return;
+    }
+    timer = setTimeout(() => {
+      settle({ ok: false, reason: 'deadline_exceeded' });
+      req.resume();
+    }, remaining);
+    timer.unref();
   });
 }
 
@@ -193,14 +227,7 @@ function resolveDemoResponse(raw: unknown): unknown {
 
 // ---------------------------------------------------------------------------
 // demo 分支（记忆提炼）：请求 → fixtures（确定性，零网络）
-//
-//   1) consent !== true                       → {candidates:[], reason:'consent_required'}
-//   2) messages 非非空数组 / 项非法            → {candidates:[], reason:'invalid_request'}
-//   3) maxItems 显式非法（非正数）             → {candidates:[], reason:'invalid_request'}
-//   4) 否则返回 extractMemory.candidates（有 maxItems 时按 ≤3 夹取后切片）
 // ---------------------------------------------------------------------------
-
-const MAX_EXTRACT_ITEMS = 3;
 
 function resolveDemoExtractResponse(raw: unknown): unknown {
   if (!isObject(raw)) {
@@ -223,18 +250,12 @@ function resolveDemoExtractResponse(raw: unknown): unknown {
   if (typeof raw.maxItems !== 'number' || !Number.isFinite(raw.maxItems) || raw.maxItems <= 0) {
     return { candidates: [], reason: 'invalid_request' };
   }
-  const limit = Math.min(Math.floor(raw.maxItems), MAX_EXTRACT_ITEMS);
+  const limit = Math.min(Math.floor(raw.maxItems), LIMITS.maxExtractItems);
   return { candidates: candidates.slice(0, limit) };
 }
 
 // ---------------------------------------------------------------------------
 // demo 分支（问诊引导）：请求 → fixtures（确定性，零网络）
-//
-//   1) consent !== true                              → {status:'failed', reason:'consent_required'}
-//   2) messages 非非空数组 / 项非法 / round 显式非法   → {status:'failed', reason:'invalid_request'}
-//   3) 本地 detectRedFlag 扫描 user 消息命中           → redflag fixture（零网络）
-//   4) round >= LIMITS.maxInterviewQuestions          → {status:'done'}
-//   5) 否则 → {status:'ask', question: interview.question fixture}
 // ---------------------------------------------------------------------------
 
 function resolveDemoInterviewResponse(raw: unknown): unknown {
@@ -272,20 +293,62 @@ function resolveDemoInterviewResponse(raw: unknown): unknown {
 }
 
 // ---------------------------------------------------------------------------
-// HTTP 处理
+// CORS / Host（P1-29）
 // ---------------------------------------------------------------------------
 
-function applyCors(req: IncomingMessage, res: ServerResponse): void {
-  const origin = req.headers.origin;
-  // devtools 的 Origin 形如 http://127.0.0.1:<port>；有则回显，无则用通配。
-  res.setHeader(
-    'Access-Control-Allow-Origin',
-    typeof origin === 'string' && origin.length > 0 ? origin : '*'
+function hostnameOf(value: string): string {
+  try {
+    const withScheme = value.includes('://') ? value : `http://${value}`;
+    return new URL(withScheme).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function isLocalHostname(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]';
+}
+
+function isAllowedOrigin(origin: string, config: ServerConfig): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(origin);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+  const hostname = parsed.hostname.toLowerCase();
+  if (isLocalHostname(hostname)) return true;
+  if (config.corsOrigins.includes(origin)) return true;
+  return WECHAT_ORIGIN_SUFFIXES.some(
+    (suffix) => hostname === suffix || hostname.endsWith(`.${suffix}`)
   );
+}
+
+/** 只对允许的 Origin 回显 ACAO；非白名单 Origin 不回显（浏览器据此拦截）。 */
+function applyCors(req: IncomingMessage, res: ServerResponse, config: ServerConfig): void {
+  const origin = req.headers.origin;
+  if (typeof origin === 'string' && origin.length > 0 && isAllowedOrigin(origin, config)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
   res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
+
+function isLocalHostHeader(hostHeader: string | undefined): boolean {
+  if (typeof hostHeader !== 'string' || hostHeader === '') return false;
+  return isLocalHostname(hostnameOf(hostHeader));
+}
+
+function hasJsonContentType(req: IncomingMessage): boolean {
+  const value = req.headers['content-type'];
+  return typeof value === 'string' && value.toLowerCase().includes('application/json');
+}
+
+// ---------------------------------------------------------------------------
+// HTTP 处理
+// ---------------------------------------------------------------------------
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.statusCode = status;
@@ -302,100 +365,135 @@ function sendPayloadTooLarge(res: ServerResponse): void {
   });
 }
 
-async function handleAsk(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const body = await readBody(req);
+type RouteOutcome<T> = { kind: 'value'; value: T } | { kind: 'error' } | { kind: 'deadline' };
+
+/**
+ * 在总预算内执行路由，并把取消信号一路传到上游：
+ *   - 预算截止时间在请求派发时计算（含 body 读取），调用方传入绝对 `deadlineAt`；
+ *   - req 关闭（客户端断连）→ abort；
+ *   - 超过 deadlineAt → abort + 返回 {kind:'deadline'}（调用方回 504）。
+ */
+async function executeRoute<T>(
+  req: IncomingMessage,
+  res: ServerResponse,
+  deadlineAt: number,
+  run: (signal: AbortSignal, deadlineAt: number) => Promise<T>
+): Promise<RouteOutcome<T>> {
+  const remaining = deadlineAt - Date.now();
+  if (remaining <= 0) return { kind: 'deadline' };
+  const controller = new AbortController();
+  const onClose = (): void => {
+    if (!res.writableEnded) controller.abort();
+  };
+  req.on('close', onClose);
+
+  let timer: NodeJS.Timeout | undefined;
+  const deadlinePromise = new Promise<RouteOutcome<T>>((resolveOutcome) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      resolveOutcome({ kind: 'deadline' });
+    }, remaining);
+    timer.unref();
+  });
+  const runPromise = run(controller.signal, deadlineAt).then(
+    (value) => ({ kind: 'value', value }) as RouteOutcome<T>,
+    () => ({ kind: 'error' }) as RouteOutcome<T>
+  );
+
+  try {
+    const outcome = await Promise.race([runPromise, deadlinePromise]);
+    if (outcome.kind === 'value' && Date.now() >= deadlineAt) {
+      return { kind: 'deadline' };
+    }
+    return outcome;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    req.removeListener('close', onClose);
+  }
+}
+
+const DEADLINE_BODY = { ok: false, error: 'deadline_exceeded' } as const;
+
+async function parseBodyJson(req: IncomingMessage, res: ServerResponse, errorBody: unknown, deadlineAt: number): Promise<unknown | null> {
+  const body = await readBody(req, deadlineAt);
   if (!body.ok) {
-    if (body.reason === 'payload_too_large') {
-      sendPayloadTooLarge(res);
-    } else {
-      sendJson(res, 400, { error: 'invalid_request', message: '无法读取请求体' });
-    }
+    if (body.reason === 'payload_too_large') sendPayloadTooLarge(res);
+    else if (body.reason === 'deadline_exceeded') sendJson(res, 504, DEADLINE_BODY);
+    else sendJson(res, 400, errorBody);
+    return null;
+  }
+  try {
+    return JSON.parse(body.text) as unknown;
+  } catch {
+    sendJson(res, 400, errorBody);
+    return null;
+  }
+}
+
+async function handleAsk(req: IncomingMessage, res: ServerResponse, deadlineAt: number): Promise<void> {
+  const parsed = await parseBodyJson(req, res, { error: 'invalid_request', message: '请求体不是合法 JSON' }, deadlineAt);
+  if (parsed === null) return;
+
+  if (config.demo) {
+    sendJson(res, 200, resolveDemoResponse(parsed));
     return;
   }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(body.text) as unknown;
-  } catch {
-    sendJson(res, 400, { error: 'invalid_request', message: '请求体不是合法 JSON' });
+  const outcome = await executeRoute<AskResponse>(req, res, deadlineAt, (signal, runDeadlineAt) =>
+    ask(parsed as AskRequest, { config, signal, deadlineAt: runDeadlineAt })
+  );
+  if (outcome.kind === 'deadline') {
+    sendJson(res, 504, DEADLINE_BODY);
     return;
   }
-
-  try {
-    if (config.demo) {
-      sendJson(res, 200, resolveDemoResponse(parsed));
-      return;
-    }
-    const response: AskResponse = await ask(parsed as AskRequest, { config });
-    sendJson(res, 200, response);
-  } catch {
-    // ask() 契约上绝不抛异常；此兜底仅防御装配层自身错误。
+  if (outcome.kind === 'error') {
     sendJson(res, 500, { error: 'internal_error', message: '内部错误：请求处理失败' });
+    return;
   }
+  sendJson(res, 200, outcome.value);
 }
 
-async function handleExtractMemory(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const body = await readBody(req);
-  if (!body.ok) {
-    if (body.reason === 'payload_too_large') {
-      sendPayloadTooLarge(res);
-    } else {
-      sendJson(res, 400, { error: 'invalid_request', message: '无法读取请求体' });
-    }
+async function handleExtractMemory(req: IncomingMessage, res: ServerResponse, deadlineAt: number): Promise<void> {
+  const parsed = await parseBodyJson(req, res, { candidates: [], reason: 'invalid_request' }, deadlineAt);
+  if (parsed === null) return;
+
+  if (config.demo) {
+    sendJson(res, 200, resolveDemoExtractResponse(parsed));
     return;
   }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(body.text) as unknown;
-  } catch {
-    sendJson(res, 400, { error: 'invalid_request', message: '请求体不是合法 JSON' });
+  const outcome = await executeRoute<ExtractResponse>(req, res, deadlineAt, (signal, runDeadlineAt) =>
+    extractMemory(parsed as ExtractRequest, { config, signal, deadlineAt: runDeadlineAt })
+  );
+  if (outcome.kind === 'deadline') {
+    sendJson(res, 504, DEADLINE_BODY);
     return;
   }
-
-  try {
-    if (config.demo) {
-      sendJson(res, 200, resolveDemoExtractResponse(parsed));
-      return;
-    }
-    const response: ExtractResponse = await extractMemory(parsed as ExtractRequest, { config });
-    sendJson(res, 200, response);
-  } catch {
-    // extractMemory() 契约上绝不抛异常；此兜底仅防御装配层自身错误。
+  if (outcome.kind === 'error') {
     sendJson(res, 500, { candidates: [], reason: 'internal_error' });
+    return;
   }
+  sendJson(res, 200, outcome.value);
 }
 
-async function handleInterview(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const body = await readBody(req);
-  if (!body.ok) {
-    if (body.reason === 'payload_too_large') {
-      sendPayloadTooLarge(res);
-    } else {
-      sendJson(res, 400, { status: 'failed', reason: 'invalid_request' });
-    }
+async function handleInterview(req: IncomingMessage, res: ServerResponse, deadlineAt: number): Promise<void> {
+  const parsed = await parseBodyJson(req, res, { status: 'failed', reason: 'invalid_request' }, deadlineAt);
+  if (parsed === null) return;
+
+  if (config.demo) {
+    sendJson(res, 200, resolveDemoInterviewResponse(parsed));
     return;
   }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(body.text) as unknown;
-  } catch {
-    sendJson(res, 400, { status: 'failed', reason: 'invalid_request' });
+  const outcome = await executeRoute<InterviewResponse>(req, res, deadlineAt, (signal, runDeadlineAt) =>
+    interview(parsed as InterviewRequest, { config, signal, deadlineAt: runDeadlineAt })
+  );
+  if (outcome.kind === 'deadline') {
+    sendJson(res, 504, DEADLINE_BODY);
     return;
   }
-
-  try {
-    if (config.demo) {
-      sendJson(res, 200, resolveDemoInterviewResponse(parsed));
-      return;
-    }
-    const response: InterviewResponse = await interview(parsed as InterviewRequest, { config });
-    sendJson(res, 200, response);
-  } catch {
-    // interview() 契约上绝不抛异常；此兜底仅防御装配层自身错误。
+  if (outcome.kind === 'error') {
     sendJson(res, 500, { status: 'failed', reason: 'internal_error' });
+    return;
   }
+  sendJson(res, 200, outcome.value);
 }
 
 // ---------------------------------------------------------------------------
@@ -407,15 +505,30 @@ const config = loadConfig(process.env.MHP_CONFIG_PATH);
 const health = buildHealth(config);
 
 const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-  applyCors(req, res);
+  let path: string;
+  try {
+    path = new URL(req.url ?? '/', `http://${HOST}`).pathname;
+  } catch {
+    sendJson(res, 400, { ok: false, error: 'invalid_request' });
+    return;
+  }
+
+  applyCors(req, res, config);
 
   const method = req.method ?? 'GET';
-  const path = new URL(req.url ?? '/', `http://${HOST}`).pathname;
-
-  // 预检请求：直接 204。
   if (method === 'OPTIONS') {
+    const origin = req.headers.origin;
+    if (typeof origin === 'string' && origin.length > 0 && !isAllowedOrigin(origin, config)) {
+      sendJson(res, 403, { ok: false, error: 'forbidden_origin' });
+      return;
+    }
     res.statusCode = 204;
     res.end();
+    return;
+  }
+
+  if (!isLocalHostHeader(req.headers.host)) {
+    sendJson(res, 403, { ok: false, error: 'forbidden_host' });
     return;
   }
 
@@ -428,43 +541,45 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     return;
   }
 
-  if (path === '/api/ask') {
+  if (path === '/api/ask' || path === '/api/extract-memory' || path === '/api/interview') {
     if (method !== 'POST') {
-      sendJson(res, 405, { error: 'method_not_allowed' });
+      sendJson(res, 405, { ok: false, error: 'method_not_allowed' });
       return;
     }
-    void handleAsk(req, res);
-    return;
-  }
-
-  if (path === '/api/extract-memory') {
-    if (method !== 'POST') {
-      sendJson(res, 405, { error: 'method_not_allowed' });
+    if (!hasJsonContentType(req)) {
+      sendJson(res, 415, { ok: false, error: 'unsupported_media_type' });
       return;
     }
-    void handleExtractMemory(req, res);
-    return;
-  }
-
-  if (path === '/api/interview') {
-    if (method !== 'POST') {
-      sendJson(res, 405, { error: 'method_not_allowed' });
-      return;
-    }
-    void handleInterview(req, res);
+    // 总预算在派发时一次性确定（早于 readBody/JSON 解析）：慢速上传同样消耗该预算。
+    const deadlineAt = Date.now() + resolveTotalDeadlineMs();
+    if (path === '/api/ask') void handleAsk(req, res, deadlineAt);
+    else if (path === '/api/extract-memory') void handleExtractMemory(req, res, deadlineAt);
+    else void handleInterview(req, res, deadlineAt);
     return;
   }
 
   sendJson(res, 404, { ok: false, error: 'not_found', path });
 });
 
+server.keepAliveTimeout = 5000;
+server.headersTimeout = 10000;
+// 环境感知（MHP_TOTAL_DEADLINE_MS）的预算 + 10s 余量，与 executeRoute 使用同一解析器。
+server.requestTimeout = resolveTotalDeadlineMs() + 10000;
+
 // ---------------------------------------------------------------------------
-// 生命周期
+// 生命周期（P1-24：closeAllConnections + 兜底定时器）
 // ---------------------------------------------------------------------------
 
 function shutdown(signal: string): void {
   console.log(`[server] 收到 ${signal}，正在关闭…`);
+  const force = setTimeout(() => {
+    console.error('[server] 关闭超时，强制退出。');
+    process.exit(1);
+  }, 3000);
+  force.unref();
+  if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
   server.close(() => {
+    clearTimeout(force);
     process.exit(0);
   });
 }
