@@ -6,6 +6,7 @@
  */
 
 import type { DraftForm, InterviewDraft } from './ai-types';
+import { isCanonicalIso } from '../../shared/utils/time';
 
 /** 一轮问答：问题槽位 + 问题文本 + 用户回答。 */
 export interface InterviewAnswer {
@@ -34,9 +35,23 @@ const SLOT_ORDER: readonly { slot: string; label: string }[] = [
 ];
 
 /** 取某槽位最后一次回答；无则空串。 */
-export function lastAnswerFor(answers: readonly InterviewAnswer[], slot: string): string {
+function lastAnswerFor(answers: readonly InterviewAnswer[], slot: string): string {
   const rows = answers.filter((row) => row.slot === slot);
   return rows.length === 0 ? '' : rows[rows.length - 1].answer;
+}
+
+/**
+ * 归一化「发生时间」契约：`occurredAt` 必须是共享权威 `isCanonicalIso` 认可的
+ * ISO 8601 或空；自由文本（如「昨天晚上」）移入 `occurredAtText` 并清空
+ * `occurredAt`。不复制正则，避免与服务端/记录层产生第二套判定。
+ */
+export function normalizeOccurredAt(value: string): { occurredAt: string; occurredAtText: string } {
+  const trimmed = value.trim();
+  if (trimmed === '') return { occurredAt: '', occurredAtText: '' };
+  if (isCanonicalIso(trimmed)) {
+    return { occurredAt: trimmed, occurredAtText: '' };
+  }
+  return { occurredAt: '', occurredAtText: trimmed };
 }
 
 /** 识别用户输入的「保存类」口语指令（纯本地，不外发）。 */

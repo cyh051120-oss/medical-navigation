@@ -16,7 +16,7 @@ import type { OrganizeResult } from './organizer';
 import type { LocalProfile } from './records';
 
 /** 每条消息「存为记忆」文案的最大长度。 */
-export const MEMORY_TEXT_MAX = 100;
+const MEMORY_TEXT_MAX = 100;
 
 /** 一个可渲染条目：主文本 + 副行（来源/标签）+ 链接 + 角标。 */
 export interface AiBlockItem {
@@ -53,15 +53,15 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-export function stringArray(value: unknown): string[] {
+function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
-export function blockItem(text: string, sub = '', url = '', tag = ''): AiBlockItem {
+function blockItem(text: string, sub = '', url = '', tag = ''): AiBlockItem {
   return { text, sub, url, tag };
 }
 
-export function listBlock(type: string, title: string, values: string[]): AiBlock | null {
+function listBlock(type: string, title: string, values: string[]): AiBlock | null {
   const items = values
     .map((value) => value.trim())
     .filter((value) => value !== '')
@@ -70,11 +70,11 @@ export function listBlock(type: string, title: string, values: string[]): AiBloc
   return { type, title, items };
 }
 
-export function pushBlock(blocks: AiBlock[], block: AiBlock | null): void {
+function pushBlock(blocks: AiBlock[], block: AiBlock | null): void {
   if (block !== null) blocks.push(block);
 }
 
-export function withFlags(block: AiBlock | null, flags: { note?: boolean; ask?: boolean }): AiBlock | null {
+function withFlags(block: AiBlock | null, flags: { note?: boolean; ask?: boolean }): AiBlock | null {
   if (block === null) return null;
   return { ...block, ...flags };
 }
@@ -91,7 +91,7 @@ export function profileContributes(profile: LocalProfile | null): boolean {
   return fields.some((field) => typeof field === 'string' && field.trim() !== '');
 }
 
-export function citationParts(citation: unknown): { sub: string; url: string } {
+function citationParts(citation: unknown): { sub: string; url: string } {
   if (!isRecord(citation)) return { sub: '', url: '' };
   const title = typeof citation.title === 'string' ? citation.title : '';
   const domain = typeof citation.domain === 'string' ? citation.domain : '';
@@ -104,6 +104,23 @@ export function citationParts(citation: unknown): { sub: string; url: string } {
 
 export function isRedFlag(data: unknown): boolean {
   return isRecord(data) && data.redFlag === true;
+}
+
+/**
+ * 判定 JSON 是否来自演示/固定 fixture（服务端 `/api/health` 的 `demo`/`demoMode`，
+ * 或响应体自带的 `demo` 标记）。用于避免把演示内容当作真实模型输出展示。
+ */
+export function demoFlagOf(data: unknown): boolean {
+  if (!isRecord(data)) return false;
+  return data.demo === true || data.demoMode === true;
+}
+
+/** 检索不可用（尚未取到权威资料）时的提示；其余零命中情形复用 AI.noAuthorityNotice。 */
+const SEARCH_UNAVAILABLE_NOTICE = '当前无法获取权威资料，请向医生确认。';
+
+function searchNoticeFor(reason: string): string {
+  if (reason === 'search_unavailable' || reason === 'not_configured') return SEARCH_UNAVAILABLE_NOTICE;
+  return AI.noAuthorityNotice;
 }
 
 /**
@@ -199,7 +216,13 @@ export function consultBlocks(data: unknown): { blocks: AiBlock[]; disclaimer: s
   if (citationItems.length > 0) {
     blocks.push({ type: 'citations', title: AI.sectionCitations, items: citationItems });
   } else {
-    blocks.push({ type: 'notice', title: AI.sectionSourcesNotice, items: [blockItem(AI.noAuthorityNotice)] });
+    const reason =
+      typeof root.degraded === 'string'
+        ? root.degraded
+        : typeof root.searchReason === 'string'
+          ? root.searchReason
+          : '';
+    blocks.push({ type: 'notice', title: AI.sectionSourcesNotice, items: [blockItem(searchNoticeFor(reason))] });
   }
 
   const suggestions = Array.isArray(root.suggestions) ? root.suggestions : [];

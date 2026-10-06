@@ -5,7 +5,7 @@
 // Installs a `wx` shim BEFORE importing the modules under test:
 //   - in-memory Map backing storage.ts (get/set/remove/getStorageInfoSync);
 //   - programmable `wx.request` mock recording every call, with modes
-//     ok / unreachable / timeout / http-500 / bad-json.
+//     ok / unreachable / timeout / http-500 / http-504 / http-413 / bad-json.
 // NO devtools, NO window, NO real network: this node harness is the plan-approved
 // alternative to the frozen E2E path.
 //
@@ -64,6 +64,12 @@ function createWxShim() {
           case 'http-500':
             options.success({ statusCode: 500, data: { error: 'boom' } });
             break;
+          case 'http-504':
+            options.success({ statusCode: 504, data: { ok: false, error: 'deadline_exceeded' } });
+            break;
+          case 'http-413':
+            options.success({ statusCode: 413, data: { error: 'payload_too_large', message: '请求体超限' } });
+            break;
           case 'bad-json':
             options.success({ statusCode: 200, data: 'not-json' });
             break;
@@ -99,6 +105,7 @@ const records = await import(
   pathToFileURL(resolve(root, 'hospital-ai-miniapp/shared/services/records.ts')).href
 );
 const texts = await import(pathToFileURL(resolve(root, 'hospital-ai-miniapp/config/texts.ts')).href);
+const prompts = await import(pathToFileURL(resolve(root, 'server/prompts.ts')).href);
 
 // ---------------------------------------------------------------------------
 // Fixtures (synthetic; fake PII only)
@@ -546,15 +553,114 @@ resetRequests();
       sent === fromPreview &&
       leaked.length === 0 &&
       wx._requests[0].url === `${ai.DEFAULT_PROXY_URL}${ai.ASK_PATH}` &&
-      wx._requests[0].method === 'POST',
+      wx._requests[0].method === 'POST' &&
+      wx._requests[0].timeout === ai.DEFAULT_TIMEOUT_MS,
     {
       status: res.status,
       url: wx._requests[0] ? wx._requests[0].url : null,
       leaked_tokens: leaked,
       sent_body: sent,
+      timeout_ms: wx._requests[0] ? wx._requests[0].timeout : null,
     }
   );
 }
+
+// 16) timeout budget: client timeout must exceed the server's 110000ms deadline.
+record(
+  'timeout budget: DEFAULT_TIMEOUT_MS 已提到 120000（> 服务端 110000 deadline）',
+  ai.DEFAULT_TIMEOUT_MS === 120000,
+  { default_timeout_ms: ai.DEFAULT_TIMEOUT_MS }
+);
+
+// 17) server 504 deadline_exceeded -> dedicated proxy_deadline (not a generic proxy_error).
+resetStore();
+resetRequests();
+wx._requestMode = 'http-504';
+{
+  const res = await ai.sendAsk(baseAskInput(), { prefs: { aiEnabled: true }, consent: true });
+  record(
+    '504 deadline_exceeded: {ok:false, error:proxy_deadline, status:504, serverReason:deadline_exceeded}',
+    res.ok === false && res.error === 'proxy_deadline' && res.status === 504 && res.serverReason === 'deadline_exceeded',
+    { result: res }
+  );
+}
+
+// 18) non-2xx BODY is parsed, not discarded: 413 surfaces payload_too_large.
+resetStore();
+resetRequests();
+wx._requestMode = 'http-413';
+{
+  const res = await ai.sendAsk(baseAskInput(), { prefs: { aiEnabled: true }, consent: true });
+  record(
+    '413: 解析响应体，error=proxy_error + serverReason=payload_too_large（不再丢掉原因）',
+    res.ok === false && res.error === 'proxy_error' && res.status === 413 && res.serverReason === 'payload_too_large',
+    { result: res }
+  );
+}
+
+// 19) ask messages are capped so the body stays under the server 64KB闸.
+resetStore();
+resetRequests();
+{
+  const many = [];
+  for (let i = 0; i < 40; i += 1) {
+    many.push({ role: i % 2 === 0 ? 'user' : 'assistant', content: '症状'.repeat(400) });
+  }
+  const { payload } = ai.buildAskPayload({ mode: 'organize', messages: many, profile: null, excerpts: [], memories: [] });
+  const chars = payload.messages.reduce((sum, message) => sum + message.content.length, 0);
+  const body = ai.serializeAskPayload(payload);
+  record(
+    'ask: messages 受 MAX_ASK_CHARS 截断，body < 64KB',
+    chars <= ai.MAX_ASK_CHARS && body.length < 64 * 1024,
+    { chars, cap: ai.MAX_ASK_CHARS, body_bytes: body.length }
+  );
+}
+
+// 20) missing host API -> structured host_unavailable, no throw / no wedge.
+resetStore();
+resetRequests();
+{
+  const saved = wx.request;
+  delete wx.request;
+  let threw = false;
+  let res = null;
+  try {
+    res = await ai.sendAsk(baseAskInput(), { prefs: { aiEnabled: true }, consent: true });
+  } catch (e) {
+    threw = true;
+  }
+  wx.request = saved;
+  record(
+    '缺少 wx.request: {ok:false, error:host_unavailable}，不抛异常',
+    threw === false && res !== null && res.ok === false && res.error === 'host_unavailable',
+    { threw, result: res }
+  );
+}
+
+// 21) fetchHealth: GET /api/health, demo flag readable.
+resetStore();
+resetRequests();
+wx._response = { ok: true, demo: true, providerReady: true, demoMode: true };
+{
+  const res = await ai.fetchHealth();
+  record(
+    'fetchHealth: GET /api/health 且 demo=true 可读',
+    res.ok === true &&
+      res.data !== null &&
+      typeof res.data === 'object' &&
+      res.data.demo === true &&
+      wx._requests[0].method === 'GET' &&
+      wx._requests[0].url === `${ai.DEFAULT_PROXY_URL}/api/health`,
+    { result: res, url: wx._requests[0] ? wx._requests[0].url : null }
+  );
+}
+
+// 22) interview context cap parity: client must not cut stricter than the server contract.
+record(
+  'interview cap parity: MAX_INTERVIEW_CHARS === server LIMITS.maxInterviewChars',
+  ai.MAX_INTERVIEW_CHARS === prompts.LIMITS.maxInterviewChars,
+  { client: ai.MAX_INTERVIEW_CHARS, server: prompts.LIMITS.maxInterviewChars }
+);
 
 // ---------------------------------------------------------------------------
 // Report
@@ -570,7 +676,7 @@ const artifact = {
   command: 'npx tsx scripts/check-aiclient.mjs',
   timestamp: new Date().toISOString(),
   modules: ['hospital-ai-miniapp/shared/services/aiClient.ts', 'hospital-ai-miniapp/config/texts.ts'],
-  mocks: [{ name: 'wx.request', modes: ['ok', 'unreachable', 'timeout', 'http-500', 'bad-json'] }],
+  mocks: [{ name: 'wx.request', modes: ['ok', 'unreachable', 'timeout', 'http-500', 'http-504', 'http-413', 'bad-json'] }],
   cases,
   typecheck,
   summary,

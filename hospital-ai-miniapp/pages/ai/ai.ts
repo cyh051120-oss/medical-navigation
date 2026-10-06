@@ -1,12 +1,13 @@
-// pages/ai/ai.ts — 双模式 AI 助手页（任务 29）。
+// pages/ai/ai.ts — 三模式 AI 助手页（任务 29）。
 //
-// 两个产品模式（AiMode）：
+// 三个产品模式（AiTab）：
 //   organize 资料整理：一段原话 → 要点 / 提取 / 待补充 / 可问的问题。
 //   consult  问诊建议：结合带入的资料 → 健康方向 / 建议就诊科室 / 来源链接 / 日常建议 /
 //             待补充 / 可问的问题；首次进入与每次发送前都需确认发送范围。
+//   interview 问诊引导：/api/interview 连续追问，结束后可存成症状记录。
 //
 // 数据与隐私边界：
-//   - 历史对话只经 shared/utils/storage.ts（键 ai_messages）本地持久化，超出本页即清；
+//   - 历史对话只经 shared/utils/storage.ts（键 ai_messages）本地持久化，保留最近 N 条；
 //     本页不出现任何宿主存储直调。
 //   - 实体数据只经 records.*；本地整理经 shared/services/organizer.ts（无网络）。
 //   - 外部发送只经 shared/services/aiClient.ts：`buildAskPayload().preview` 即「将发送的字节」，
@@ -14,14 +15,17 @@
 //   - 问诊首次同意标记 `ai_consult_ack` 只存本地；不改 AppPreferences、不触碰 consentVersion。
 //   - 演示模式（prefs.demoMode，仅开发者工具可开）自足可用：只开它即可出本地固定结果，
 //     不要求 aiEnabled，也不弹外部 AI 同意框——因为全程零外发、根本不走 aiClient。
+//   - 生命周期：onUnload 置 destroyed 并 abort 在飞请求，回调入口按 token 判活，
+//     避免已销毁页用过期快照回写历史。
 
 import { AI, DEGRADED, DEMO, DISCLAIMERS, QUESTIONS, SAFETY } from '../../config/texts';
 import {
-  MAX_INTERVIEW_QUESTIONS,
+  abortPendingRequests,
   buildAskPayload,
   buildExcerptCandidates,
   buildInterviewPayload,
   defaultRecentExcerpts,
+  fetchHealth,
   lastRound,
   sendAsk,
   sendExtractMemory,
@@ -46,6 +50,7 @@ import { SIDEBAR_DATA, setSidebarCollapsed, syncSidebar } from '../../shared/ui/
 import {
   blocksToText,
   consultBlocks as renderConsultBlocks,
+  demoFlagOf,
   extractCandidates,
   interviewBlocks,
   interviewQuestionOf,
@@ -65,7 +70,7 @@ import type { AiBlock, AiBlockItem, AiStatus } from '../../shared/services/aiRen
 // —— 重构抽出：纯请求体构造（shared/services/aiInput.ts）——
 import { buildAskInput, buildInterviewInput as buildInterviewInputPayload } from '../../shared/services/aiInput';
 // —— 重构抽出：问诊引导草稿（pages/ai/ai-interview.ts）——
-import { interviewDraftFor, matchSaveIntent, noteDraftFor, questionCandidatesFor } from './ai-interview';
+import { interviewDraftFor, matchSaveIntent, normalizeOccurredAt, noteDraftFor, questionCandidatesFor } from './ai-interview';
 // —— 重构抽出：页面级类型与守卫（pages/ai/ai-types.ts）——
 import { isAiMessage } from './ai-types';
 import type {
@@ -81,12 +86,16 @@ import type {
 
 /** 历史对话本地持久化键（storage.ts 前缀后实际为 mhp_ai_messages）。 */
 const HISTORY_KEY = 'ai_messages';
+/** 历史对话保留上限：超出时仅保留最近 N 条，避免无界增长撑爆单键配额。 */
+const MAX_HISTORY_MESSAGES = 200;
 /** 问诊首次同意标记（只存本地布尔；任务 31 会另行扩展正式同意版本）。 */
 const CONSULT_ACK_KEY = 'ai_consult_ack';
 /** 记忆总量上限：达到后停止新增并提示。 */
 const MAX_MEMORY_TOTAL = 50;
 /** 问诊引导首次同意标记（只存本地布尔）。 */
 const INTERVIEW_ACK_KEY = 'ai_interview_ack';
+/** 外部 AI 超时（客户端 120s / 服务端 deadline 504）时的降级提示（texts.ts 无对应键）。 */
+const TIMEOUT_DEGRADED_TEXT = '外部 AI 响应超时，本次未能完成；可稍后重试，或先用本地整理。';
 
 // —— 软著锚点：资料整理 / 问诊建议渲染委托到 shared/services/aiRender.ts（纯函数，可 node 测）——
 const organizeBlocks = (data: unknown): AiBlock[] => renderOrganizeBlocks(data);
@@ -106,6 +115,12 @@ Page({
   pendingKind: 'ask' as 'ask' | 'interview',
   /** 本轮问诊引导的第一段描述，用作症状记录的「原话」。 */
   interviewOrigin: '',
+  /** 页面是否已销毁：所有异步回调入口据此早退，禁止用过期快照回写。 */
+  destroyed: false,
+  /** 在飞发送序号：回调与当前序号不一致即视为过期，忽略。 */
+  sendToken: 0,
+  /** 页面是否在后台（onHide）：后台时不弹 toast。 */
+  pageHidden: false,
 
   data: {
     ...A11Y_DATA,
@@ -119,7 +134,6 @@ Page({
     includeProfile: false,
     profileAvailable: false,
     memoryCount: 0,
-    memoryTotal: 0,
     memoryLabel: '',
     previewOpen: false,
     previewSections: [] as PreviewRow[],
@@ -129,6 +143,8 @@ Page({
     aiStatusText: '',
     aiEnabled: false,
     demoMode: false,
+    /** 服务端 `/api/health` 报告的演示模式：输出为固定 fixture，需按演示标注。 */
+    serverDemo: false,
     autoMemoryEnabled: true,
     autoMemoryAdded: 0,
     autoMemoryHint: '',
@@ -137,7 +153,6 @@ Page({
     draftOpen: false,
     draftForm: { name: '', excerpt: '', remark: '' } as DraftForm,
     draftHint: '',
-    interviewActive: false,
     interviewQuestion: null as InterviewQuestion | null,
     interviewAnswers: [] as { slot: string; question: string; answer: string }[],
     interviewCount: 0,
@@ -163,12 +178,32 @@ Page({
   },
 
   onShow() {
+    this.pageHidden = false;
     syncA11y(this);
     syncSidebar(this);
+    if (typeof wx.setNavigationBarColor === 'function') {
+      const hc = this.data.highContrast === true;
+      wx.setNavigationBarColor({
+        frontColor: hc ? '#ffffff' : '#000000',
+        backgroundColor: hc ? '#000000' : '#ffffff',
+      });
+    }
     this.loadAll();
+    void this.refreshHealth();
     const initial = this.initialMode;
     this.initialMode = '';
     if (initial === 'consult') void this.setMode('consult');
+  },
+
+  onHide() {
+    this.pageHidden = true;
+  },
+
+  /** 页面销毁：标记失效、作废在飞序号、取消所有在飞请求（避免过期回调回写历史）。 */
+  onUnload() {
+    this.destroyed = true;
+    this.sendToken += 1;
+    abortPendingRequests();
   },
 
   /** 侧栏收起/展开：落盘偏好并回写 data。 */
@@ -181,9 +216,11 @@ Page({
     const messages = this.loadMessages();
     const aiEnabled = prefs.aiEnabled;
     const demoMode = prefs.demoMode === true;
+    const serverDemo = this.data.serverDemo === true;
     let aiStatus = this.data.aiStatus;
     // 演示模式自足：只开演示模式即可出结果（本地固定内容、零外发），无需外部 AI 的同意开关。
-    if (demoMode) aiStatus = 'demo';
+    // 服务端 demo=true 时输出同样是固定 fixture，须一并按演示标注，绝不显示为真实模型结果。
+    if (demoMode || (serverDemo && aiEnabled === true)) aiStatus = 'demo';
     else if (aiEnabled !== true) aiStatus = 'disabled';
     else if (aiStatus === 'disabled' || aiStatus === 'demo') aiStatus = 'idle';
     this.setData({
@@ -203,6 +240,19 @@ Page({
     this.setData({ aiStatus: status, aiStatusText: statusTextFor(status) });
   },
 
+  /** 探测本机代理健康状态：服务端 demo=true 时把状态切到演示，标注固定 fixture 输出。 */
+  refreshHealth(): Promise<void> {
+    const prefs = records.preferences.get();
+    if (prefs.demoMode === true || prefs.aiEnabled !== true) return Promise.resolve();
+    return fetchHealth().then((result) => {
+      if (this.destroyed === true) return;
+      const isDemo = 'ok' in result && result.ok === true && demoFlagOf(result.data);
+      if (isDemo !== this.data.serverDemo) this.setData({ serverDemo: isDemo });
+      if (isDemo) this.setAiStatus('demo');
+      else if (this.data.aiStatus === 'demo') this.setAiStatus('idle');
+    });
+  },
+
   /** 代理失败后处于本地兜底：后续发送不再外发，直至「重试连接」。 */
   isLocalFallback(): boolean {
     return this.data.aiStatus === 'offline' || this.data.aiStatus === 'local';
@@ -210,10 +260,23 @@ Page({
 
   // ----- 历史 -----
 
+  /** 纯读：从存储载入并过滤非法项、仅保留最近 N 条；绝不回写（读取路径不得销毁存储数据）。 */
   loadMessages(): AiMessage[] {
     const raw = storage.get<unknown>(HISTORY_KEY, []);
     if (!Array.isArray(raw)) return [];
-    return raw.filter(isAiMessage);
+    const valid = raw.filter(isAiMessage);
+    return valid.length > MAX_HISTORY_MESSAGES ? valid.slice(valid.length - MAX_HISTORY_MESSAGES) : valid;
+  },
+
+  /** 持久化历史（保留最近 N 条）。存储写失败时返回内存快照，避免链路上抛。 */
+  persistMessages(messages: AiMessage[]): AiMessage[] {
+    try {
+      storage.set(HISTORY_KEY, messages);
+      return messages;
+    } catch (error) {
+      void error;
+      return messages;
+    }
   },
 
   chatMessages(): ChatMessage[] {
@@ -227,8 +290,12 @@ Page({
   },
 
   appendMessage(message: AiMessage): void {
-    const messages = this.data.messages.concat([message]);
-    storage.set(HISTORY_KEY, messages);
+    if (this.destroyed === true) return;
+    // 以「现读存储」而非页面内存快照为基准，避免已销毁/清除后的过期快照被回写复活。
+    const combined = this.loadMessages().concat([message]);
+    const messages =
+      combined.length > MAX_HISTORY_MESSAGES ? combined.slice(combined.length - MAX_HISTORY_MESSAGES) : combined;
+    this.persistMessages(messages);
     this.setData({ messages, hasMessages: messages.length > 0 });
   },
 
@@ -318,7 +385,6 @@ Page({
       previewSections: [],
       previewDemoNotice: '',
       hint: '',
-      interviewActive: false,
       interviewQuestion: null,
       // BUG B 修复：切换模式时清掉上一轮的自动记忆提示条，避免常驻不消失。
       autoMemoryHint: '',
@@ -345,7 +411,7 @@ Page({
         if (ok) {
           this.interviewOrigin = '';
           this.applyMode('interview');
-          this.setData({ interviewCount: 0, interviewAnswers: [], interviewActive: false });
+          this.setData({ interviewCount: 0, interviewAnswers: [] });
         } else {
           this.setData({ hint: AI.aiDisabledHint });
         }
@@ -413,7 +479,6 @@ Page({
   },
 
   refreshMemoryCount() {
-    const enabledMemories = records.memory.list().filter((memory) => memory.enabled === true);
     const profile = records.profile.list()[0] ?? null;
     // 问诊引导只按 /api/interview 的字段计入记忆；这里借用 ask 构造器只为统计条数。
     const askMode: AiMode = this.data.mode === 'interview' ? 'organize' : this.data.mode;
@@ -426,7 +491,7 @@ Page({
     });
     const count = built.payload.memories === undefined ? 0 : built.payload.memories.length;
     const memoryLabel = count > 0 ? `${AI.includeMemoriesPrefix} ${count} ${AI.includeMemoriesUnit}` : AI.includeMemoriesNone;
-    this.setData({ memoryCount: count, memoryTotal: enabledMemories.length, memoryLabel });
+    this.setData({ memoryCount: count, memoryLabel });
   },
 
   // ----- 发送（先预览确认，再发送） -----
@@ -533,6 +598,7 @@ Page({
   },
 
   onSend(): Promise<{ sent: boolean; reason: string }> {
+    if (this.data.sending === true) return Promise.resolve({ sent: false, reason: 'sending' });
     // BUG B 修复：每次发送前清掉上一轮的自动记忆提示条。
     this.setData({ autoMemoryHint: '', autoMemoryAdded: 0, memoryCapHit: false });
     const text = this.data.input.trim();
@@ -581,6 +647,10 @@ Page({
   },
 
   onConfirmSend(): Promise<{ ok: boolean; kind?: AiKind; reason?: string }> {
+    if (this.destroyed === true) return Promise.resolve({ ok: false, reason: 'destroyed' });
+    if (this.data.sending === true) return Promise.resolve({ ok: false, reason: 'sending' });
+    const token = this.sendToken + 1;
+    this.sendToken = token;
     if (this.pendingKind === 'interview') {
       const interviewInput = this.pendingInterview;
       if (interviewInput === null || interviewInput === undefined) {
@@ -596,10 +666,9 @@ Page({
       const pendingInterview = useInterviewDemo
         ? Promise.resolve(demoInterview(interviewInput))
         : sendInterview(interviewInput, { prefs: interviewPrefs, consent: true });
-      return pendingInterview.then((result) => {
-        this.setData({ sending: false });
-        return this.handleInterviewResult(result, interviewInput, interviewText);
-      });
+      return this.finishSend(pendingInterview, token, (result) =>
+        this.handleInterviewResult(result, interviewInput, interviewText, token)
+      );
     }
     const input = this.pendingInput;
     if (input === null || input === undefined) {
@@ -613,18 +682,57 @@ Page({
     const prefs = records.preferences.get();
     const useDemo = prefs.demoMode === true;
     const pending = useDemo ? Promise.resolve(demoAsk(input)) : sendAsk(input, { prefs, consent: true });
-    return pending.then((result) => {
-      this.setData({ sending: false });
-      return this.handleSendResult(result, input, text, useDemo);
-    });
+    return this.finishSend(pending, token, (result) => this.handleSendResult(result, input, text, useDemo, token));
+  },
+
+  /** 回调是否已过期：页面已销毁，或发起后又有新的发送。 */
+  isStale(token: number): boolean {
+    return this.destroyed === true || token !== this.sendToken;
+  },
+
+  /** 非 ok 结果按降级码给出文案：超时/deadline 单独说明，绝不谎称已切本地整理。 */
+  degradedTextFor(errorCode: string): string {
+    if (errorCode === 'proxy_timeout' || errorCode === 'proxy_deadline') return TIMEOUT_DEGRADED_TEXT;
+    if (errorCode === 'proxy_unreachable') return DEGRADED.proxyOffline;
+    return DEGRADED.aiFailed;
+  },
+
+  /**
+   * 统一收口发送 Promise：成功/失败/过期都在同一处复位 `sending`；
+   * 过期或已销毁时丢弃结果，不写 Storage、不 setData（避免过期快照回写）。
+   */
+  finishSend(
+    pending: Promise<SendResult>,
+    token: number,
+    onResult: (result: SendResult) => Promise<{ ok: boolean; kind?: AiKind; reason?: string }>
+  ): Promise<{ ok: boolean; kind?: AiKind; reason?: string }> {
+    return pending
+      .then((result) => (this.isStale(token) ? { ok: false, reason: 'stale' } : onResult(result)))
+      .catch(() => this.handleSendException(token))
+      .then((outcome) => {
+        if (this.destroyed !== true && token === this.sendToken) this.setData({ sending: false });
+        return outcome;
+      });
+  },
+
+  /** 发送 Promise 异常兜底：结构化降级并确保 sending 复位，不让页面卡在「发送中」。 */
+  handleSendException(token: number): { ok: boolean; reason: string } {
+    if (this.isStale(token)) return { ok: false, reason: 'stale' };
+    const errorText = DEGRADED.aiFailed;
+    this.setAiStatus('offline');
+    this.pushAssistant({ kind: 'error', mode: this.data.mode, errorText, canLocalOrganize: false });
+    this.setData({ hint: errorText });
+    return { ok: false, reason: 'exception' };
   },
 
   handleSendResult(
     result: SendResult,
     input: AskInput,
     text: string,
-    demo: boolean
+    demo: boolean,
+    token: number
   ): Promise<{ ok: boolean; kind?: AiKind; reason?: string }> {
+    if (this.isStale(token)) return Promise.resolve({ ok: false, reason: 'stale' });
     if ('skipped' in result && result.skipped === true) {
       const errorText = result.reason === 'ai_disabled' ? DEGRADED.notEnabled : DEGRADED.aiFailed;
       if (result.reason === 'ai_disabled') this.setAiStatus('disabled');
@@ -634,7 +742,7 @@ Page({
     }
     if (!('ok' in result && result.ok === true)) {
       const errorCode = 'error' in result ? result.error : 'invalid_response';
-      const errorText = errorCode === 'proxy_unreachable' ? DEGRADED.proxyOffline : DEGRADED.aiFailed;
+      const errorText = this.degradedTextFor(errorCode);
       this.setAiStatus('offline');
       this.pushAssistant({ kind: 'error', mode: input.mode, errorText, canLocalOrganize: true, localText: text });
       this.setData({ hint: errorText });
@@ -644,10 +752,12 @@ Page({
     const data = result.data;
     const envelope = serverErrorEnvelope(data);
     if (envelope.code !== '') {
-      return this.handleServerError(envelope.code, envelope.fallback, text, input.mode);
+      return Promise.resolve(this.handleServerError(envelope.code, envelope.fallback, text, input.mode));
     }
 
-    this.setAiStatus(demo ? 'demo' : 'ok');
+    // 演示/固定 fixture（本地 demoMode、服务端 demo、或响应体自带标记）一律按演示标注。
+    const demoOutput = demo || this.data.serverDemo === true || demoFlagOf(data);
+    this.setAiStatus(demoOutput ? 'demo' : 'ok');
     let kind: AiKind = input.mode === 'organize' ? 'organize' : 'consult';
     let blocks: AiBlock[] = [];
     let disclaimer = '';
@@ -681,7 +791,7 @@ Page({
     this.appendMessage(userMessage);
     this.pushAssistant({ kind, mode: input.mode, blocks, disclaimer });
     this.setData({ input: '', hint: '' });
-    return this.maybeAutoExtract().then(() => ({ ok: true, kind }));
+    return this.maybeAutoExtract(token).then(() => ({ ok: true, kind }));
   },
 
   /** 服务端错误信封统一降级：unsafe_output 消费 fallback（本地整理），其余保留原文。 */
@@ -761,8 +871,10 @@ Page({
   handleInterviewResult(
     result: SendResult,
     input: InterviewInput,
-    text: string
+    text: string,
+    token: number
   ): Promise<{ ok: boolean; kind?: AiKind; reason?: string }> {
+    if (this.isStale(token)) return Promise.resolve({ ok: false, reason: 'stale' });
     if ('skipped' in result && result.skipped === true) {
       const errorText = result.reason === 'ai_disabled' ? DEGRADED.notEnabled : DEGRADED.aiFailed;
       if (result.reason === 'ai_disabled') this.setAiStatus('disabled');
@@ -772,7 +884,7 @@ Page({
     }
     if (!('ok' in result && result.ok === true)) {
       const errorCode = 'error' in result ? result.error : 'invalid_response';
-      const errorText = errorCode === 'proxy_unreachable' ? DEGRADED.proxyOffline : DEGRADED.aiFailed;
+      const errorText = this.degradedTextFor(errorCode);
       this.setAiStatus('offline');
       this.pushAssistant({ kind: 'error', mode: 'interview', errorText, canLocalOrganize: false });
       this.setData({ hint: AI.interviewFailedHint });
@@ -789,7 +901,7 @@ Page({
         blocks: redflag.blocks,
         disclaimer: redflag.disclaimer,
       });
-      this.setData({ input: '', hint: '', interviewActive: false, interviewQuestion: null });
+      this.setData({ input: '', hint: '', interviewQuestion: null });
       return Promise.resolve({ ok: true, kind: 'redflag' });
     }
 
@@ -802,7 +914,7 @@ Page({
         this.setData({ input: '', hint: AI.interviewFailedHint });
         return Promise.resolve({ ok: false, reason: 'unsafe_output' });
       }
-      this.setData({ input: '', hint: '', interviewActive: false, interviewQuestion: null });
+      this.setData({ input: '', hint: '', interviewQuestion: null });
       this.openInterviewDraft();
       return Promise.resolve({ ok: true, kind: 'interview' });
     }
@@ -817,7 +929,6 @@ Page({
     this.setData({
       input: '',
       hint: AI.interviewGuide,
-      interviewActive: true,
       interviewQuestion: question,
       interviewCount: round,
     });
@@ -834,7 +945,6 @@ Page({
     });
     this.setData({
       interviewDraftOpen: true,
-      interviewActive: false,
       interviewQuestion: null,
       interviewDraft: draft,
       interviewDraftHint: '',
@@ -932,14 +1042,19 @@ Page({
       this.toast(AI.interviewDraftDuplicateHint);
       return { saved: false, reason: 'duplicate' };
     }
-    const record = records.symptoms.add({
-      occurredAt: draft.occurredAt.trim(),
+    // occurredAt 契约：ISO 8601 或空；自由文本（如「昨天晚上」）移入 occurredAtText。
+    const occurred = normalizeOccurredAt(draft.occurredAt);
+    const base = {
+      occurredAt: occurred.occurredAt,
       duration: draft.duration.trim(),
       text,
       impact: draft.impact.trim(),
       tags: splitTags(draft.tags),
       attachment: null,
-    });
+    };
+    const symptomInput =
+      occurred.occurredAtText !== '' ? { ...base, occurredAtText: occurred.occurredAtText } : base;
+    const record = records.symptoms.add(symptomInput);
     this.interviewOrigin = '';
     this.setData({
       interviewDraftOpen: false,
@@ -1168,7 +1283,8 @@ Page({
 
   // ----- 自动提炼 -----
 
-  maybeAutoExtract(): Promise<{ ran: boolean; added: number; discarded?: boolean }> {
+  maybeAutoExtract(token: number): Promise<{ ran: boolean; added: number; discarded?: boolean }> {
+    if (this.isStale(token)) return Promise.resolve({ ran: false, added: 0 });
     const prefs = records.preferences.get();
     const demo = prefs.demoMode === true;
     if ((prefs.aiEnabled !== true && !demo) || prefs.autoMemory !== true) {
@@ -1182,6 +1298,7 @@ Page({
       ? Promise.resolve(demoExtractMemory({ messages: round, profile }))
       : sendExtractMemory({ messages: round, profile }, { prefs, consent: true });
     return pending.then((result) => {
+      if (this.isStale(token)) return { ran: false, added: 0 };
       const nowPrefs = records.preferences.get();
       if ((nowPrefs.aiEnabled !== true && nowPrefs.demoMode !== true) || nowPrefs.autoMemory !== true) {
         this.setData({ autoMemoryAdded: 0, autoMemoryHint: AI.memoryDiscardHint, memoryCapHit: false });
@@ -1218,6 +1335,7 @@ Page({
   },
 
   toast(title: string) {
+    if (this.destroyed === true || this.pageHidden === true) return;
     if (typeof wx.showToast === 'function') wx.showToast({ title, icon: 'none' });
   },
 });

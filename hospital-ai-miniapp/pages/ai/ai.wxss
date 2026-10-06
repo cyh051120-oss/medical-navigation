@@ -47,9 +47,13 @@
   border-left: 6rpx solid var(--text-caption);
 }
 
-.statusbar--idle,
-.statusbar--ok {
+.statusbar--idle {
   border-left-color: var(--color-primary);
+}
+
+/* A13-07：「已连接」走成功色通道，与离线/失败（--color-danger）区分；状态另有文本表达，不单靠颜色。 */
+.statusbar--ok {
+  border-left-color: var(--color-success);
 }
 
 .statusbar--offline,
@@ -77,6 +81,10 @@
 }
 
 .statusbar__action {
+  display: inline-flex;
+  align-items: center;
+  min-height: 88rpx;
+  padding: 0 var(--mhp-space-2);
   font-size: calc(24rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-caption);
   color: var(--color-primary);
@@ -191,6 +199,10 @@
 
 .memory__jump {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 88rpx;
+  padding: 0 var(--mhp-space-2);
   font-size: calc(24rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-caption);
   color: var(--text-caption);
@@ -227,6 +239,10 @@
 }
 
 .toggle {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 88rpx;
   padding: var(--mhp-space-4) var(--mhp-space-5);
   margin-bottom: var(--mhp-space-4);
   border-radius: var(--radius-sm);
@@ -529,6 +545,10 @@
 
 .hintbar__jump {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 88rpx;
+  padding: 0 var(--mhp-space-2);
   font-size: calc(24rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-caption);
   color: var(--text-caption);
@@ -655,6 +675,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-height: 88rpx;
   padding: var(--mhp-space-5) var(--mhp-space-8);
   border-radius: var(--radius-md);
   text-align: center;

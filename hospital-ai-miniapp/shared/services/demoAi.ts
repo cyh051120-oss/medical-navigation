@@ -8,6 +8,21 @@
 
 import { MAX_INTERVIEW_QUESTIONS } from './aiClient';
 import type { AskInput, ExtractInput, InterviewInput, SendSuccess } from './aiClient';
+import { detectRedFlag } from './redflags';
+
+/**
+ * 演示模式的红标短路结果。与 server/demo-fixtures.json 的 `redflag` 逐字一致：
+ * 演示模式输入「胸痛」等红标词时，不再返回普通整理/建议，而是安全提示（与服务端演示分支同源）。
+ */
+const REDFLAG_DATA = {
+  redFlag: true,
+  safetyNotice: '您描述的情况可能需要尽快就医。本助手不提供任何医疗判断或建议。请立即拨打 120 或前往最近医院急诊，不要只依赖本工具。',
+  disclaimer: '以上内容仅为信息整理与一般性提示，不构成诊断或治疗建议；如有不适请及时就医。',
+};
+
+function userTexts(messages: readonly { role: string; content: string }[]): string[] {
+  return messages.filter((message) => message.role === 'user').map((message) => message.content);
+}
 
 const ORGANIZE_DATA = {
   points: ['近一周出现头痛', '入睡较晚、睡眠欠佳'],
@@ -81,8 +96,11 @@ function cloneData<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-/** /api/ask 的确定性成功结果：consult 模式返回问诊 fixture，否则返回整理 fixture。 */
+/** /api/ask 的确定性成功结果：红标短路优先；consult 返回问诊 fixture，否则返回整理 fixture。 */
 export function demoAsk(input: AskInput): SendSuccess {
+  if (detectRedFlag(userTexts(input.messages)).hit) {
+    return { ok: true, status: 200, data: cloneData(REDFLAG_DATA) };
+  }
   const data = input.mode === 'consult' ? CONSULT_DATA : ORGANIZE_DATA;
   return { ok: true, status: 200, data: cloneData(data) };
 }
@@ -97,13 +115,16 @@ export function demoExtractMemory(input: ExtractInput = { messages: [] }): SendS
   return { ok: true, status: 200, data: { candidates: cloneData(EXTRACT_CANDIDATES.slice(0, count)) } };
 }
 
-/** 演示模式的问诊引导：固定同一个追问；达到轮数上限时返回 done（与服务端一致）。 */
+/** 演示模式的问诊引导：红标短路优先；达到轮数上限时返回 done（与服务端一致）。 */
 const INTERVIEW_ASK = {
   status: 'ask',
   question: { text: '这个情况大概持续多久了？', slot: 'duration' },
 };
 
 export function demoInterview(input: InterviewInput = { messages: [] }): SendSuccess {
+  if (detectRedFlag(userTexts(input.messages)).hit) {
+    return { ok: true, status: 200, data: cloneData(REDFLAG_DATA) };
+  }
   const round =
     typeof input.round === 'number' && Number.isFinite(input.round) && input.round >= 0
       ? Math.floor(input.round)

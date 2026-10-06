@@ -44,15 +44,21 @@ import { MEMORY } from '../../config/texts';
 // ---------------------------------------------------------------------------
 
 /** 本机代理默认端口（与服务端 config.json 的 port 默认值一致，避开 devtools 的 9420）。 */
-export const DEFAULT_PROXY_PORT = 8787;
+const DEFAULT_PROXY_PORT = 8787;
 /** 本机代理默认地址（唯一允许的外部出口）。 */
 export const DEFAULT_PROXY_URL = `http://127.0.0.1:${DEFAULT_PROXY_PORT}`;
 /** host 白名单：仅本机回环。 */
 export const ALLOWED_PROXY_HOSTS: readonly string[] = ['127.0.0.1', 'localhost'];
 export const ASK_PATH = '/api/ask';
-export const EXTRACT_PATH = '/api/extract-memory';
-export const INTERVIEW_PATH = '/api/interview';
-export const DEFAULT_TIMEOUT_MS = 8000;
+const EXTRACT_PATH = '/api/extract-memory';
+const INTERVIEW_PATH = '/api/interview';
+const HEALTH_PATH = '/api/health';
+/**
+ * 客户端请求超时预算。服务端总 deadline 为 110000ms（超时返回 HTTP 504
+ * `{ok:false, error:'deadline_exceeded'}`），客户端须严格大于它，故取 120000ms。
+ * 该常量是对外契约值（服务端/门禁按名引用），保持导出。
+ */
+export const DEFAULT_TIMEOUT_MS = 120000;
 
 /** recordExcerpts 合计字符上限（与任务 25 契约一致）。 */
 export const MAX_RECORD_EXCERPTS_CHARS = 2000;
@@ -62,8 +68,13 @@ export const MAX_MEMORY_ITEMS = 20;
 export const MAX_MEMORY_CHARS = 1000;
 /** 提炼请求合计字符上限（仅最近一轮）。 */
 export const MAX_EXTRACT_CHARS = 2000;
-/** 问诊引导请求合计字符上限。 */
-export const MAX_INTERVIEW_CHARS = 2000;
+/**
+ * 问诊引导请求合计字符上限。必须等于服务端 `LIMITS.maxInterviewChars`（server/prompts.ts）：
+ * 客户端不得比服务端契约更早截断（A03-11）；scripts/check-aiclient.mjs 断言两侧一致。
+ */
+export const MAX_INTERVIEW_CHARS = 4000;
+/** `/api/ask` 对话合计字符上限（与服务端 orchestrator maxContextChars=8000 对齐，确保 body 不撞 64KB 闸）。 */
+export const MAX_ASK_CHARS = 8000;
 /** 问诊引导追问轮数上限（与服务端 LIMITS.maxInterviewQuestions 保持一致）。 */
 export const MAX_INTERVIEW_QUESTIONS = 6;
 /** 提炼候选条数上限。 */
@@ -260,17 +271,17 @@ function escapeRe(value: string): string {
  * 收集已知姓名（档案称呼）。长度 < 2 的称呼不参与替换，避免误伤常见单字。
  * 这是确定性规则，不做命名实体识别。
  */
-export function collectKnownNames(profile?: LocalProfile | null): string[] {
+function collectKnownNames(profile?: LocalProfile | null): string[] {
   if (profile === undefined || profile === null) return [];
   const name = typeof profile.name === 'string' ? profile.name.trim() : '';
   return name.length >= 2 ? [name] : [];
 }
 
 /**
- * 确定性脱敏：手机号 → `[手机号已脱敏]`，证件号 → `[证件号已脱敏]`，
- * 已知姓名 → `[姓名已脱敏]`。顺序固定（手机号 → 证件号 → 姓名）。
+ * 确定性脱敏：证件号 → `[证件号已脱敏]`，手机号 → `[手机号已脱敏]`，
+ * 已知姓名 → `[姓名已脱敏]`。顺序固定（证件号 → 手机号 → 姓名），先长后短避免证件号被手机号规则部分吞掉。
  */
-export function redactText(text: string, knownNames: readonly string[] = []): string {
+function redactText(text: string, knownNames: readonly string[] = []): string {
   if (typeof text !== 'string' || text === '') return text;
   let out = text.replace(ID_RE, ID_PLACEHOLDER).replace(PHONE_RE, PHONE_PLACEHOLDER);
   for (const name of knownNames) {
@@ -309,7 +320,7 @@ export interface ExcerptCandidate {
   excerpt: string;
 }
 
-export function excerptFromSymptom(symptom: SymptomEntry): string {
+function excerptFromSymptom(symptom: SymptomEntry): string {
   const parts: string[] = [];
   if (isFilled(symptom.text)) parts.push(symptom.text);
   if (isFilled(symptom.duration)) parts.push(`持续 ${symptom.duration}`);
@@ -319,7 +330,7 @@ export function excerptFromSymptom(symptom: SymptomEntry): string {
   return `症状：${parts.join(' ')}${time}`;
 }
 
-export function excerptFromNote(note: DocumentNote): string {
+function excerptFromNote(note: DocumentNote): string {
   const name = isFilled(note.name) ? note.name : '';
   const body = isFilled(note.excerpt) ? note.excerpt : '';
   let text = '';
@@ -331,7 +342,7 @@ export function excerptFromNote(note: DocumentNote): string {
   return text === '' ? '' : `资料：${text}`;
 }
 
-export function excerptFromQuestion(question: QuestionList): string {
+function excerptFromQuestion(question: QuestionList): string {
   return isFilled(question.text) ? `问题：${question.text}` : '';
 }
 
@@ -399,10 +410,13 @@ function makeSection(key: PreviewKey, value: PreviewValue): PreviewSection {
 
 export function buildAskPayload(input: AskInput): AskBuildResult {
   const names = collectKnownNames(input.profile);
-  const messages: ChatMessage[] = input.messages.map((message) => ({
-    role: message.role,
-    content: redactText(message.content, names),
-  }));
+  const messages: ChatMessage[] = capMessages(
+    input.messages.map((message) => ({
+      role: message.role,
+      content: redactText(message.content, names),
+    })),
+    MAX_ASK_CHARS
+  );
   const payload: AskPayload = { mode: input.mode, messages, consent: true };
   const sections: PreviewSection[] = [];
 
@@ -558,7 +572,7 @@ export function buildInterviewPayload(input: InterviewInput): InterviewBuildResu
   return { payload, preview: { consent: true, sections } };
 }
 
-export function serializeInterviewPayload(payload: InterviewPayload): string {
+function serializeInterviewPayload(payload: InterviewPayload): string {
   const ordered: Record<string, unknown> = { messages: payload.messages, consent: true };
   if (payload.round !== undefined) ordered.round = payload.round;
   if (payload.memories !== undefined) ordered.memories = payload.memories;
@@ -574,12 +588,14 @@ export type DegradedCode =
   | 'invalid_proxy_url'
   | 'proxy_unreachable'
   | 'proxy_timeout'
+  | 'proxy_deadline'
   | 'proxy_error'
-  | 'invalid_response';
+  | 'invalid_response'
+  | 'host_unavailable';
 
-export type AiClientErrorCode = 'blocked_host' | 'invalid_proxy_url';
+type AiClientErrorCode = 'blocked_host' | 'invalid_proxy_url';
 
-export class AiClientError extends Error {
+class AiClientError extends Error {
   readonly code: AiClientErrorCode;
 
   constructor(code: AiClientErrorCode, message: string) {
@@ -599,6 +615,8 @@ export interface SendFailed {
   degraded: true;
   error: DegradedCode;
   status?: number;
+  /** 服务端非 2xx 信封里的机器码（error/reason/status），供消费端区分真实原因。 */
+  serverReason?: string;
 }
 
 export interface SendSuccess {
@@ -615,6 +633,12 @@ export interface SendOptions {
   /** 必须显式 `true`；否则返回 `{skipped:true}`，零网络。 */
   consent?: boolean;
   /** 覆盖代理地址（仍受 host 白名单约束）。 */
+  baseUrl?: string;
+  timeoutMs?: number;
+}
+
+/** `fetchHealth()` 选项；健康探测不需要 aiEnabled/consent。 */
+export interface HealthOptions {
   baseUrl?: string;
   timeoutMs?: number;
 }
@@ -642,7 +666,54 @@ export function assertProxyUrl(baseUrl: string): void {
   }
 }
 
-function postToProxy(path: string, body: string, baseUrl: string, timeoutMs: number): Promise<SendResult> {
+/** 解析响应体（字符串则 JSON.parse）；区分「解析失败」与「JSON null」。 */
+function parseBody(raw: unknown): { ok: true; value: unknown } | { ok: false } {
+  if (typeof raw !== 'string') return { ok: true, value: raw };
+  try {
+    return { ok: true, value: JSON.parse(raw) as unknown };
+  } catch (error) {
+    void error;
+    return { ok: false };
+  }
+}
+
+/** 从服务端错误信封提取机器码（error / reason / status 中首个非空字符串）。 */
+function serverReasonOf(data: unknown): string | undefined {
+  if (data === null || typeof data !== 'object') return undefined;
+  const rec = data as Record<string, unknown>;
+  for (const key of ['error', 'reason', 'status']) {
+    const value = rec[key];
+    if (typeof value === 'string' && value !== '') return value;
+  }
+  return undefined;
+}
+
+/** 在飞的宿主请求任务；页面卸载时统一 abort。 */
+interface PendingRequest {
+  abort?: () => void;
+}
+
+const pendingRequests = new Set<PendingRequest>();
+
+/** 取消本模块发起的所有在飞请求（页面卸载时调用，避免过期回调回写）。 */
+export function abortPendingRequests(): void {
+  for (const task of pendingRequests) {
+    try {
+      if (typeof task.abort === 'function') task.abort();
+    } catch (error) {
+      void error;
+    }
+  }
+  pendingRequests.clear();
+}
+
+function requestToProxy(
+  path: string,
+  body: string,
+  baseUrl: string,
+  timeoutMs: number,
+  method: 'GET' | 'POST'
+): Promise<SendResult> {
   try {
     assertProxyUrl(baseUrl);
   } catch (error) {
@@ -650,34 +721,66 @@ function postToProxy(path: string, body: string, baseUrl: string, timeoutMs: num
     return Promise.resolve({ ok: false, degraded: true, error: code });
   }
 
+  const requestFn = typeof wx !== 'undefined' && typeof wx.request === 'function' ? wx.request : null;
+  if (requestFn === null) {
+    return Promise.resolve({ ok: false, degraded: true, error: 'host_unavailable' });
+  }
+
   const url = `${baseUrl.replace(/\/+$/, '')}${path}`;
   return new Promise<SendResult>((resolve) => {
-    wx.request({
+    let settled = false;
+    let task: PendingRequest | null = null;
+    const settle = (result: SendResult): void => {
+      if (settled) return;
+      settled = true;
+      if (task !== null) pendingRequests.delete(task);
+      resolve(result);
+    };
+    task = requestFn({
       url,
-      method: 'POST',
-      data: body,
+      method,
+      data: method === 'POST' ? body : '',
       timeout: timeoutMs,
       header: { 'content-type': 'application/json' },
       success: (res) => {
         const status = res.statusCode;
         if (status >= 200 && status < 300) {
-          try {
-            const data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
-            resolve({ ok: true, status, data });
-          } catch (error) {
-            resolve({ ok: false, degraded: true, error: 'invalid_response', status });
+          const parsed = parseBody(res.data);
+          if (!parsed.ok) {
+            settle({ ok: false, degraded: true, error: 'invalid_response', status });
+            return;
           }
-        } else {
-          resolve({ ok: false, degraded: true, error: 'proxy_error', status });
+          settle({ ok: true, status, data: parsed.value });
+          return;
         }
+        const parsed = parseBody(res.data);
+        const serverReason = parsed.ok ? serverReasonOf(parsed.value) : undefined;
+        const error: DegradedCode =
+          status === 504 && serverReason === 'deadline_exceeded' ? 'proxy_deadline' : 'proxy_error';
+        settle({ ok: false, degraded: true, error, status, serverReason });
       },
       fail: (err) => {
         const message = err && typeof err.errMsg === 'string' ? err.errMsg : '';
         const timeout = message.indexOf('timeout') >= 0;
-        resolve({ ok: false, degraded: true, error: timeout ? 'proxy_timeout' : 'proxy_unreachable' });
+        settle({ ok: false, degraded: true, error: timeout ? 'proxy_timeout' : 'proxy_unreachable' });
       },
     });
+    if (task !== null && !settled) pendingRequests.add(task);
   });
+}
+
+/**
+ * 探测本机代理健康状态（`GET /api/health`）。不要求 aiEnabled/consent，
+ * 供页面在 onShow 消费 `demo` 标记，避免把演示 fixture 当作真实模型输出展示。
+ */
+export function fetchHealth(options: HealthOptions = {}): Promise<SendResult> {
+  return requestToProxy(
+    HEALTH_PATH,
+    '',
+    options.baseUrl ?? DEFAULT_PROXY_URL,
+    options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    'GET'
+  );
 }
 
 /**
@@ -688,11 +791,12 @@ export function sendAsk(input: AskInput, options: SendOptions): Promise<SendResu
   if (options.prefs.aiEnabled !== true) return Promise.resolve({ skipped: true, reason: 'ai_disabled' });
   if (options.consent !== true) return Promise.resolve({ skipped: true, reason: 'consent_required' });
   const { preview } = buildAskPayload(input);
-  return postToProxy(
+  return requestToProxy(
     ASK_PATH,
     serializeAskPayload(reassembleAskPayload(preview)),
     options.baseUrl ?? DEFAULT_PROXY_URL,
-    options.timeoutMs ?? DEFAULT_TIMEOUT_MS
+    options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    'POST'
   );
 }
 
@@ -701,11 +805,12 @@ export function sendExtractMemory(input: ExtractInput, options: SendOptions): Pr
   if (options.prefs.aiEnabled !== true) return Promise.resolve({ skipped: true, reason: 'ai_disabled' });
   if (options.consent !== true) return Promise.resolve({ skipped: true, reason: 'consent_required' });
   const { payload } = buildExtractMemoryPayload(input);
-  return postToProxy(
+  return requestToProxy(
     EXTRACT_PATH,
     serializeExtractPayload(payload),
     options.baseUrl ?? DEFAULT_PROXY_URL,
-    options.timeoutMs ?? DEFAULT_TIMEOUT_MS
+    options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    'POST'
   );
 }
 
@@ -718,10 +823,11 @@ export function sendInterview(input: InterviewInput, options: SendOptions): Prom
   if (options.prefs.aiEnabled !== true) return Promise.resolve({ skipped: true, reason: 'ai_disabled' });
   if (options.consent !== true) return Promise.resolve({ skipped: true, reason: 'consent_required' });
   const { payload } = buildInterviewPayload(input);
-  return postToProxy(
+  return requestToProxy(
     INTERVIEW_PATH,
     serializeInterviewPayload(payload),
     options.baseUrl ?? DEFAULT_PROXY_URL,
-    options.timeoutMs ?? DEFAULT_TIMEOUT_MS
+    options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    'POST'
   );
 }

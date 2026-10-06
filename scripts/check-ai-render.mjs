@@ -26,6 +26,9 @@ const T = await import(pathToFileURL(resolve(root, 'hospital-ai-miniapp/pages/ai
 const IV = await import(
   pathToFileURL(resolve(root, 'hospital-ai-miniapp/pages/ai/ai-interview.ts')).href
 );
+const RF = await import(
+  pathToFileURL(resolve(root, 'hospital-ai-miniapp/shared/services/redflags.ts')).href
+);
 
 const cases = [];
 function record(name, pass, detail) {
@@ -83,12 +86,35 @@ function record(name, pass, detail) {
     empty.blocks.some((b) => b.type === 'notice'),
     null
   );
+  const unavailable = R.consultBlocks({
+    directions: [],
+    suggestedDepartments: [],
+    citations: [],
+    suggestions: [],
+    unknowns: [],
+    questions: [],
+    disclaimer: 'D',
+    degraded: 'search_unavailable',
+  });
+  const unavailableNotice = unavailable.blocks.find((b) => b.type === 'notice');
+  record(
+    'consultBlocks: degraded=search_unavailable -> 可区分的检索不可用提示',
+    unavailableNotice !== undefined && unavailableNotice.items[0].text.includes('无法获取'),
+    null
+  );
 }
 
 // ---- aiRender: guard helpers ----
 record(
   'isRedFlag true only for redFlag===true',
   R.isRedFlag({ redFlag: true }) === true && R.isRedFlag({ points: [] }) === false,
+  null
+);
+record(
+  'demoFlagOf: demo/demoMode true；普通响应 false',
+  R.demoFlagOf({ demo: true }) === true &&
+    R.demoFlagOf({ demoMode: true }) === true &&
+    R.demoFlagOf({ ok: true }) === false,
   null
 );
 record(
@@ -283,6 +309,55 @@ record(
   null
 );
 
+// ---- ai-interview: normalizeOccurredAt（occurredAt 契约） ----
+record(
+  'normalizeOccurredAt: ISO 保留、自由文本移入 occurredAtText、空串清空',
+  (() => {
+    const iso = IV.normalizeOccurredAt('2026-10-05T23:00:00.000Z');
+    const dateOnly = IV.normalizeOccurredAt('2026-10-05');
+    const free = IV.normalizeOccurredAt('昨天晚上');
+    const empty = IV.normalizeOccurredAt('  ');
+    return (
+      iso.occurredAt === '2026-10-05T23:00:00.000Z' &&
+      iso.occurredAtText === '' &&
+      dateOnly.occurredAt === '2026-10-05' &&
+      free.occurredAt === '' &&
+      free.occurredAtText === '昨天晚上' &&
+      empty.occurredAt === '' &&
+      empty.occurredAtText === ''
+    );
+  })(),
+  null
+);
+
+// ---- redflags: detectRedFlag（与服务端同源的红标短路） ----
+record(
+  'detectRedFlag: 命中红标 / 否定抑制 / 口语同义',
+  (() => {
+    const hit = RF.detectRedFlag(['我突然胸痛，还有点闷']);
+    const negated = RF.detectRedFlag(['没有胸痛，只是有点累']);
+    const colloquial = RF.detectRedFlag(['这几天喘不上气']);
+    const falseNegation = RF.detectRedFlag(['一侧无力伴胸痛']);
+    return (
+      hit.hit === true &&
+      hit.terms.length > 0 &&
+      negated.hit === false &&
+      colloquial.hit === true &&
+      falseNegation.hit === true
+    );
+  })(),
+  null
+);
+
+record(
+  'redflags: 两侧孪生数组存在且非空',
+  Array.isArray(RF.REDFLAG_PATTERN_SOURCES) &&
+    RF.REDFLAG_PATTERN_SOURCES.length > 0 &&
+    Array.isArray(RF.NEGATION_PATTERN_SOURCES) &&
+    RF.NEGATION_PATTERN_SOURCES.length > 0,
+  null
+);
+
 // ---------------------------------------------------------------------------
 // Report
 // ---------------------------------------------------------------------------
@@ -301,6 +376,7 @@ const artifact = {
     'hospital-ai-miniapp/shared/services/aiInput.ts',
     'hospital-ai-miniapp/pages/ai/ai-types.ts',
     'hospital-ai-miniapp/pages/ai/ai-interview.ts',
+    'hospital-ai-miniapp/shared/services/redflags.ts',
   ],
   cases,
   summary,
