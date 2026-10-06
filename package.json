@@ -1,0 +1,27 @@
+{
+  "name": "personal-medical-prep-assistant",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "typecheck": "tsc -p hospital-ai-miniapp/tsconfig.json --noEmit && tsc -p server/tsconfig.json --noEmit",
+    "test:scan": "node scripts/static-scan.mjs",
+    "test:logic": "tsx scripts/check-organizer.mjs && tsx scripts/check-brief.mjs && tsx scripts/check-ai-render.mjs",
+    "test:server": "tsx scripts/check-server.mjs && tsx scripts/check-llm.mjs && tsx scripts/check-search.mjs && tsx scripts/check-ask.mjs && tsx scripts/check-extract.mjs && tsx scripts/check-interview.mjs && tsx scripts/check-demo.mjs && tsx scripts/check-matrix.mjs",
+    "dev:api": "node server/index.ts",
+    "dev:api:local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-api-local.ps1",
+    "test:all": "npm run test:scan && npm run test:logic && npm run test:server && tsx scripts/check-aiclient.mjs && tsx scripts/check-storage.mjs && tsx scripts/check-attachments.mjs && tsx scripts/check-memory.mjs",
+    "test:e2e": "node tests/e2e/run.mjs",
+    "screenshots": "node tests/e2e/screenshots.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "miniprogram-api-typings": "^5.2.3",
+    "miniprogram-automator": "^0.12.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}

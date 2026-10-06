@@ -1,0 +1,41 @@
+# 依赖与包管理
+node_modules/
+.npm
+.yarn
+
+# 密钥、凭据与私有配置
+.env
+.env.*
+*.env
+*.pem
+*.key
+*.cert
+*.crt
+*.pfx
+*.p12
+server/config.json
+config.json
+
+# 微信小程序私有配置与构建
+hospital-ai-miniapp/project.private.config.json
+miniprogram_npm/
+
+# 构建、编译与测试/评估产物
+dist/
+build/
+out/
+*.tsbuildinfo
+artifacts/
+
+# 日志
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 系统与编辑器缓存
+.DS_Store
+Thumbs.db
+.omo/
+.vscode/
+.idea/
