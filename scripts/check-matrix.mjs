@@ -10,8 +10,8 @@
 //        artifacts/checks/server-ask.json        （check-ask：30 例）
 //        artifacts/checks/server-extract.json    （check-extract：27 例，含 6 条路由）
 //        artifacts/server/demo-determinism.txt   （check-demo：demo 确定性）
-//        artifacts/e2e/redaction.json            （check-aiclient：客户端脱敏，独立于本链）
-//   2) 断言每个来源：存在、零失败、时间戳新鲜（本次链运行内产生；redaction 例外，见下）。
+//        artifacts/e2e/redaction.json            （check-aiclient：客户端脱敏；test:all 中先于 test:server 运行）
+//   2) 断言每个来源：存在、零失败、时间戳新鲜（本次链运行内产生，含 redaction）。
 //   3) 把验收项 ①–⑪ 映射到具体用例（按用例名子串匹配 + 该用例 pass=true），任一缺失/失败即 matrix 失败。
 //   4) 写 artifacts/checks/server-all.json，exit 0/1。
 //
@@ -21,8 +21,13 @@
 //                       断言「降级而非崩溃」并写 artifacts/qa/27-failure.txt，刻意 exit 1。
 //
 // 新鲜度：链内脚本在本文件之前运行，故要求其时间戳距今 ≤ MAX_AGE_MS（15 分钟）。
-//   redaction.json 由独立运行的 check-aiclient.mjs 生成、不在本链内，故只做「存在 + 零失败」，
-//   不做新鲜度断言（freshness:false）。
+//   redaction.json 由 check-aiclient.mjs 生成，而 package.json 的 test:all 已把它排在
+//   `npm run test:server` 之前，因此它属于本次链运行，同样强制新鲜度。
+//   此外每个来源的时间戳必须不早于本轮的「期望运行 id」：默认取链首 static-scan 的
+//   generatedAt（artifacts/scan/static-scan-full.json）。若该 marker 缺失或陈旧，视为证据链断裂，
+//   直接 fail-fast 并给出可操作信息（提示先跑 `npm run test:all`），绝不静默退化为仅 15 分钟窗口；
+//   也可用 --expect-run-id <iso|id> 或环境变量 MHP_MATRIX_RUN_ID 显式覆盖。这样一次运行中产生的
+//   证据才是本轮结果；上次运行的（陈旧）产物会被判 FAIL，而不是永远放行。
 //
 // 设计：本文件不新增/复制任何服务端用例，只引用既有 harness 的 artifact（用例名子串即契约）。
 // 零运行时依赖：仅 Node 内置模块（node:http / node:fs / node:path / node:url）。
@@ -85,8 +90,7 @@ const SOURCES = [
     id: 'redaction',
     path: 'artifacts/e2e/redaction.json',
     kind: 'json',
-    role: 'check-aiclient：客户端脱敏（独立于本链运行，不计新鲜度）',
-    freshness: false,
+    role: 'check-aiclient：客户端脱敏（test:all 中先于 test:server 运行，强制新鲜度 + 运行 id）',
   },
 ];
 
@@ -228,6 +232,58 @@ function ageOf(timestamp) {
   if (typeof timestamp !== 'string') return null;
   const ms = Date.parse(timestamp);
   return Number.isFinite(ms) ? Date.now() - ms : null;
+}
+
+function timestampMsOf(timestamp) {
+  if (typeof timestamp !== 'string') return null;
+  const ms = Date.parse(timestamp);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/** 允许的时钟偏差：来源时间戳可早于期望运行 id 最多 60 秒。 */
+const RUN_ID_SKEW_MS = 60 * 1000;
+
+function readArgValue(name) {
+  const argv = process.argv;
+  const idx = argv.indexOf(name);
+  if (idx !== -1 && idx + 1 < argv.length) return argv[idx + 1];
+  const prefix = `${name}=`;
+  const hit = argv.find((a) => a.startsWith(prefix));
+  return hit ? hit.slice(prefix.length) : null;
+}
+
+/**
+ * 本轮「期望运行 id」：一个可解析的时间戳（或任意 id；非时间戳时不做下界比较）。
+ *   1) --expect-run-id <value>   显式传入（test:all 可透传）
+ *   2) $MHP_MATRIX_RUN_ID
+ *   3) 链首 static-scan 的 generatedAt（仅当该 marker 自身新鲜时采用）
+ * 若既无显式 id、marker 又缺失或已陈旧 → 视为证据链断裂：抛 EvidenceChainError，
+ * 由调用方以可操作信息 fail-fast（绝不静默退化为仅 15 分钟窗口）。
+ */
+class EvidenceChainError extends Error {}
+
+function resolveExpectedRunId() {
+  const explicit = readArgValue('--expect-run-id') || process.env.MHP_MATRIX_RUN_ID || null;
+  if (explicit) return explicit;
+  const markerPath = resolve(root, 'artifacts/scan/static-scan-full.json');
+  const guidance =
+    'evidence chain broken: run `npm run test:all` (or `npm run test:scan && tsx scripts/check-aiclient.mjs`) first';
+  if (!existsSync(markerPath)) {
+    throw new EvidenceChainError(`${guidance} — static-scan marker missing: ${markerPath}`);
+  }
+  let marker = null;
+  try {
+    marker = JSON.parse(readFileSync(markerPath, 'utf8'));
+  } catch {
+    throw new EvidenceChainError(`${guidance} — static-scan marker is not valid JSON: ${markerPath}`);
+  }
+  const markerAge = ageOf(marker?.generatedAt);
+  if (typeof marker?.generatedAt !== 'string' || markerAge === null || markerAge > MAX_AGE_MS) {
+    throw new EvidenceChainError(
+      `${guidance} — static-scan marker stale/invalid (generatedAt=${marker?.generatedAt ?? 'n/a'}, age_ms=${markerAge ?? 'n/a'})`
+    );
+  }
+  return marker.generatedAt;
 }
 
 // ---------------------------------------------------------------------------
@@ -494,6 +550,17 @@ async function runHappyMode() {
   const checks = [];
   const record = (name, pass, detail) => checks.push({ name, pass: pass === true, detail });
 
+  const matrixStartedAt = new Date().toISOString();
+  let expectedRunId;
+  try {
+    expectedRunId = resolveExpectedRunId();
+  } catch (err) {
+    console.error(`check-matrix: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
+  const expectedRunIdMs = expectedRunId === null ? null : Date.parse(expectedRunId);
+  const runIdUsable = expectedRunIdMs !== null && Number.isFinite(expectedRunIdMs);
+
   const sources = [];
   const byId = {};
 
@@ -541,8 +608,13 @@ async function runHappyMode() {
     }
 
     const ageMs = ageOf(timestamp);
-    const fresh =
-      src.freshness === false ? true : ageMs !== null && ageMs >= -60000 && ageMs <= MAX_AGE_MS;
+    const timestampMs = timestampMsOf(timestamp);
+    const withinAge = ageMs !== null && ageMs >= -60000 && ageMs <= MAX_AGE_MS;
+    // Run-id binding: the artifact must have been produced at/after this run's start (minus skew).
+    // When the expected run id is not a parseable date, the binding is not evaluable and is skipped.
+    const runIdOk =
+      !runIdUsable || timestampMs === null || timestampMs >= expectedRunIdMs - RUN_ID_SKEW_MS;
+    const fresh = withinAge && runIdOk;
 
     const entry = {
       id: src.id,
@@ -554,18 +626,21 @@ async function runHappyMode() {
       timestamp,
       age_ms: ageMs,
       fresh,
-      freshness_enforced: src.freshness !== false,
+      freshness_enforced: true,
+      run_id_ok: runIdOk,
       detail: failureDetail,
     };
     sources.push(entry);
 
     record(`source ${src.id}: present`, present, { path: src.path });
     record(`source ${src.id}: zero failures`, zeroFailures, failureDetail);
-    record(
-      `source ${src.id}: freshness`,
-      fresh,
-      { timestamp, age_ms: ageMs, enforced: src.freshness !== false, max_age_ms: MAX_AGE_MS }
-    );
+    record(`source ${src.id}: freshness`, fresh, {
+      timestamp,
+      age_ms: ageMs,
+      max_age_ms: MAX_AGE_MS,
+      run_id_ok: runIdOk,
+      expected_run_id: expectedRunId,
+    });
   }
 
   // --- 映射 ①–⑪ → 既有用例（子串匹配 + pass） ---
@@ -603,6 +678,9 @@ async function runHappyMode() {
     timestamp: new Date().toISOString(),
     role: 'aggregator (runs LAST in the test:server chain)',
     max_age_ms: MAX_AGE_MS,
+    matrix_started_at: matrixStartedAt,
+    expected_run_id: expectedRunId,
+    run_id_usable: runIdUsable,
     sources,
     coverage,
     cases: checks,

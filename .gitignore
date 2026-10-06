@@ -27,6 +27,9 @@ out/
 *.tsbuildinfo
 artifacts/
 
+# 审计报告（含历史泄露物快照与未脱敏叙述，禁止入库；仅本地保留）
+.audit/
+
 # 日志
 *.log
 npm-debug.log*

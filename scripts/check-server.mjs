@@ -13,14 +13,12 @@
 // 说明：本脚本使用「空 key」临时配置（经 MHP_CONFIG_PATH 注入，独立于开发者本地 config.json），
 // 因而 /api/health 稳定报 providerReady=false / searchReady=false，无需还原本地真实 key。
 
-import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { delay } from './lib/check-helpers.mjs';
+import { getFreePort, makeRunCommand, makeSpawnServer, stopServer, waitForHealth } from './lib/check-helpers.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -28,7 +26,6 @@ const configPath = resolve(root, 'server/config.json');
 const healthPath = resolve(root, 'artifacts/server/health.json');
 
 const HEALTH_TIMEOUT_MS = 10000;
-const POLL_INTERVAL_MS = 250;
 const STARTED_COMMAND = 'node server/index.ts';
 
 // ---------------------------------------------------------------------------
@@ -56,20 +53,10 @@ try {
 // 仅校验 config.json 为合法 JSON；检查用端口与配置由下方临时配置决定（不读本地真实 key）。
 
 // ---------------------------------------------------------------------------
-// 工具：捕获带退出码的命令输出
+// 工具：捕获带退出码的命令输出（单一权威定义在 lib/check-helpers.mjs）
 // ---------------------------------------------------------------------------
 
-function run(command, args) {
-  const res = spawnSync(command, args, {
-    cwd: root,
-    encoding: 'utf8',
-    // Windows: `npx`/`npm` are .cmd shims; without a shell spawnSync cannot resolve them (status=null).
-    shell: process.platform === 'win32',
-  });
-  const output = `${res.stdout || ''}${res.stderr || ''}`.trim();
-  const tail = output.length > 2000 ? output.slice(-2000) : output;
-  return { command: [command, ...args].join(' '), exit: res.status, output_tail: tail };
-}
+const run = makeRunCommand(root);
 
 // ---------------------------------------------------------------------------
 // 门禁：服务端 tsc + 全量 typecheck
@@ -79,23 +66,11 @@ const serverTsc = run('npx', ['tsc', '-p', 'server/tsconfig.json', '--noEmit']);
 const fullTypecheck = run('npm', ['run', 'typecheck']);
 
 // ---------------------------------------------------------------------------
-// 拉起服务并轮询 /api/health
+// 拉起服务并轮询 /api/health（端口/生命周期/健康轮询单一权威定义在 lib/check-helpers.mjs）
 // ---------------------------------------------------------------------------
 
-/** 取一个空闲的本机端口（避免与正在运行的 dev:api 抢 config.json 里的端口）。 */
-async function findFreePort() {
-  return await new Promise((resolvePort, reject) => {
-    const probe = createServer();
-    probe.once('error', reject);
-    probe.listen(0, '127.0.0.1', () => {
-      const addr = probe.address();
-      const p = typeof addr === 'object' && addr !== null ? addr.port : 0;
-      probe.close(() => resolvePort(p));
-    });
-  });
-}
-
-const port = await findFreePort();
+// 取一个空闲的本机端口（避免与正在运行的 dev:api 抢 config.json 里的端口）。
+const port = await getFreePort();
 const tempConfigPath = resolve(tmpdir(), `mhp-check-server-${process.pid}.json`);
 writeFileSync(
   tempConfigPath,
@@ -112,54 +87,14 @@ writeFileSync(
   )}\n`
 );
 
-const child = spawn('node', ['server/index.ts'], {
-  cwd: root,
-  stdio: ['ignore', 'pipe', 'pipe'],
-  env: { ...process.env, MHP_CONFIG_PATH: tempConfigPath },
-});
-let serverLog = '';
-child.stdout.on('data', (chunk) => {
-  serverLog += chunk.toString();
-});
-child.stderr.on('data', (chunk) => {
-  serverLog += chunk.toString();
-});
-
-async function waitForHealth() {
-  const deadline = Date.now() + HEALTH_TIMEOUT_MS;
-  let lastError = null;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`http://127.0.0.1:${port}/api/health`);
-      if (res.ok) {
-        return { status: res.status, response: await res.json() };
-      }
-      lastError = `HTTP ${res.status}`;
-    } catch (err) {
-      lastError = err instanceof Error ? err.message : String(err);
-    }
-    await delay(POLL_INTERVAL_MS);
-  }
-  return { status: null, response: null, error: lastError };
-}
-
-async function stopServer() {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  child.kill('SIGTERM');
-  const deadline = Date.now() + 3000;
-  while (child.exitCode === null && child.signalCode === null && Date.now() < deadline) {
-    await delay(100);
-  }
-  if (child.exitCode === null && child.signalCode === null) {
-    child.kill('SIGKILL');
-  }
-}
+const server = makeSpawnServer(root)(tempConfigPath);
+const child = server.child;
 
 let health;
 try {
-  health = await waitForHealth();
+  health = await waitForHealth(port, HEALTH_TIMEOUT_MS);
 } finally {
-  await stopServer();
+  await stopServer(child);
   rmSync(tempConfigPath, { force: true });
 }
 
@@ -186,7 +121,7 @@ const summary = {
   checks,
   health_status: health.status,
   health_error: health.error ?? null,
-  server_log_tail: serverLog.length > 2000 ? serverLog.slice(-2000) : serverLog,
+  server_log_tail: server.log().length > 2000 ? server.log().slice(-2000) : server.log(),
 };
 
 const artifact = {

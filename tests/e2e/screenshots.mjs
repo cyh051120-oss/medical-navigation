@@ -18,7 +18,9 @@
 // Params (env):
 //   MHP_SHOT_OUT    output dir (default artifacts/screenshots/style-refactor)
 //   MHP_SHOT_FONTS  comma list (default "14,32")
-//   MHP_OCR_SHOT    path to the swift OCR helper; when present, OCR text is captured
+//   MHP_OCR_SHOT    path to the swift OCR helper; REQUIRED to prove the long-text overflow
+//                   sentinel. No machine-specific default is baked in: when unset/unreadable the
+//                   overflow claim cannot be proven and this engine exits non-zero (honest failure).
 //
 // Zero external network: the AI page runs in demo mode (local fixtures only).
 import fs from 'node:fs';
@@ -49,9 +51,9 @@ import {
 } from './helpers.mjs';
 
 const OUT_DIR = process.env.MHP_SHOT_OUT || path.join(ROOT, 'artifacts', 'screenshots', 'style-refactor');
-const OCR_SHOT =
-  process.env.MHP_OCR_SHOT ||
-  '/var/folders/g4/g3pzp24j5nbcdqw34g74pdr40000gn/T/opencode/ocr-shot.swift';
+// Optional swift OCR helper. Deliberately NO hardcoded path (the old default pointed at a deleted
+// machine-local temp file, making the overflow sentinel permanently false while still exiting 0).
+const OCR_SHOT = process.env.MHP_OCR_SHOT || '';
 const FONT_SIZES = (process.env.MHP_SHOT_FONTS || '14,32')
   .split(',')
   .map((v) => Number(v.trim()))
@@ -97,6 +99,11 @@ function prefsFor(fontSize, extra = {}) {
     ...extra,
   };
 }
+
+// Only the AI page is captured with the assistant enabled in demo mode; every other page is
+// captured offline. The generated report derives `demo_mode` from THIS object (never a hardcoded
+// literal) so the evidence file cannot misdescribe the run it belongs to.
+const AI_PAGE_PREFS = prefsFor(14, { aiEnabled: true, demoMode: true });
 
 async function seedRecords(mp) {
   await setKey(mp, KEYS.profile, seedProfile());
@@ -215,7 +222,7 @@ async function driveBriefError(mp) {
 // OCR (optional helper; graceful skip)
 // ---------------------------------------------------------------------------
 function ocrAvailable() {
-  return fs.existsSync(OCR_SHOT);
+  return OCR_SHOT !== '' && fs.existsSync(OCR_SHOT);
 }
 
 function ocrImage(file) {
@@ -296,7 +303,7 @@ async function main() {
   section('STYLE-REFACTOR SCREENSHOTS');
   log(`out: ${OUT_DIR}`);
   log(`font sizes: ${FONT_SIZES.join(', ')}`);
-  log(`ocr: ${ocrAvailable() ? OCR_SHOT : 'not available (skipped)'}`);
+  log(`ocr: ${ocrAvailable() ? OCR_SHOT : 'NOT available (MHP_OCR_SHOT unset) -> overflow proof disabled, run will fail'}`);
 
   const shots = [];
   const checklist = [];
@@ -362,7 +369,7 @@ async function main() {
     // 4. loading states (default font) — real page flags (sending / exporting),
     //    scrolled into view so the indicator is actually captured.
     await clearAll(mp);
-    await setKey(mp, KEYS.preferences, prefsFor(14, { aiEnabled: true, demoMode: true }));
+    await setKey(mp, KEYS.preferences, AI_PAGE_PREFS);
     await goto(mp, 'pages/ai/ai');
     await setFlag(mp, { sending: true });
     await scrollTo(mp, 100000);
@@ -417,9 +424,14 @@ async function main() {
     });
 
     const contrast = computeContrast();
+    const ocrOn = ocrAvailable();
     const sentinelVisible = (ocrByShot['symptoms-32-longtext'] || [])
       .join('\n')
       .includes(LONG_SENTINEL);
+    // Honest overflow proof: the sentinel check is the ONLY evidence that the unbroken long token
+    // wrapped (no horizontal overflow). Without OCR it cannot be proven, so the run must fail
+    // rather than silently emit an "unproven" evidence set.
+    const overflowProven = ocrOn && sentinelVisible;
 
     // per-page checklist (structural facts proven here + OCR-assisted review notes)
     for (const page of PAGES) {
@@ -465,7 +477,9 @@ async function main() {
       out_dir: path.relative(ROOT, OUT_DIR),
       font_sizes: FONT_SIZES,
       pages: PAGES.map((p) => p.name),
-      demo_mode: true,
+      demo_mode: AI_PAGE_PREFS.demoMode === true,
+      demo_mode_scope:
+        'only pages/ai enables aiEnabled+demoMode (loading-state capture); all other pages are captured offline',
       shot_count: shots.length,
       shots,
       longtext_probe: {
@@ -477,6 +491,9 @@ async function main() {
         ocr_end: ocrByShot['symptoms-32-longtext-end'] || null,
         sentinel_visible_top: (ocrByShot['symptoms-32-longtext'] || []).join('\n').includes(LONG_SENTINEL),
         sentinel_visible_end: (ocrByShot['symptoms-32-longtext-end'] || []).join('\n').includes(LONG_SENTINEL),
+        ocr_available: ocrOn,
+        ocr_shot_path: OCR_SHOT || null,
+        overflow_proven: overflowProven,
       },
       contrast,
       checklist,
@@ -488,16 +505,30 @@ async function main() {
         all_shots_ok: shots.every((s) => s.ok),
         contrast_body_ge_4_5: contrast.body_text_pair ? contrast.body_text_pair.passes_4_5 : false,
         contrast_all_ge_4_5: contrast.pairs.every((p) => p.passes_4_5),
+        ocr_available: ocrOn,
+        longtext_sentinel_visible: sentinelVisible,
+        overflow_proven: overflowProven,
       },
     };
 
     fs.writeFileSync(path.join(OUT_DIR, 'index.json'), JSON.stringify(report, null, 2) + '\n');
-    if (ocrAvailable()) {
+    if (ocrOn) {
       fs.writeFileSync(path.join(OUT_DIR, 'ocr.json'), JSON.stringify(ocrByShot, null, 2) + '\n');
     }
     log(`index: ${path.join(OUT_DIR, 'index.json')}`);
     log(`shots ok: ${report.summary.all_shots_ok}, body contrast ok: ${report.summary.contrast_body_ge_4_5}`);
-    return report.summary.all_shots_ok;
+    if (!ocrOn) {
+      log(
+        'OCR helper unavailable (set MHP_OCR_SHOT to a working swift OCR script): the long-text ' +
+          'overflow sentinel CANNOT be proven -> treating this run as FAILED'
+      );
+    } else if (!sentinelVisible) {
+      log(
+        `long-text sentinel "${LONG_SENTINEL}" not found in OCR of symptoms-32-longtext: ` +
+          'horizontal-overflow claim NOT proven -> treating this run as FAILED'
+      );
+    }
+    return report.summary.all_shots_ok && report.summary.overflow_proven;
   } finally {
     if (mp) {
       try {

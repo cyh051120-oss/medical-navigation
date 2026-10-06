@@ -1,5 +1,5 @@
 // E2E harness shared helpers for the personal-medical-prep-assistant project.
-// Zero runtime deps beyond Node built-ins; loaded by run.mjs and bootstrap.spec.mjs.
+// Zero runtime deps beyond Node built-ins; loaded by run.mjs and app-shell.spec.mjs.
 import { spawn, spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -583,12 +583,23 @@ export async function waitForHealth(url, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   let lastError = null;
   while (Date.now() < deadline) {
+    let res = null;
     try {
-      const res = await fetch(url);
+      res = await fetch(url);
       if (res.ok) return { status: res.status, response: await res.json() };
       lastError = `HTTP ${res.status}`;
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
+    } finally {
+      // Non-2xx/aborted responses must release their body, or undici keeps the socket out of the
+      // pool. A poll loop would otherwise strand one connection per attempt.
+      if (res !== null) {
+        try {
+          await res.body?.cancel();
+        } catch {
+          // Body already consumed (2xx) or closed; nothing left to release.
+        }
+      }
     }
     await delayMs(250);
   }

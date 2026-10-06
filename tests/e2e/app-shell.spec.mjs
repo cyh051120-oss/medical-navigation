@@ -3,6 +3,14 @@
 // Asserts the app window title and that every page registered in app.json is
 // navigable at runtime. Evidence: artifacts/e2e/app-shell.json.
 //
+// This spec supersedes tests/e2e/bootstrap.spec.mjs (deleted in the gate-repair
+// wave): bootstrap's assertions (app.json pages[0] === pages/home/home,
+// currentPage.path === pages[0], live render with pageStack + PNG magic + >5000B)
+// are all covered here, and this spec additionally checks the window title, the
+// full 8-page sequence and per-route navigation. bootstrap's one unique assertion
+// — that the render's top page path equals pages[0] — is merged into the render
+// check below.
+//
 // Runtime notes (WeChat DevTools 2.01.x): the Page.* automator protocol is
 // dropped, so this spec uses the App-level transport the harness already
 // relies on — currentPage / navigateTo / navigateBack (App.callWxMethod),
@@ -135,7 +143,7 @@ async function main() {
       .subarray(0, 8)
       .equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
     fs.unlinkSync(shotPath);
-    const renderOk = stack.length >= 1 && pngMagic && shot.length > 5000;
+    const renderOk = stack.length >= 1 && top !== null && top.path === expectedPages[0] && pngMagic && shot.length > 5000;
     report.render = {
       pageStack: stack.length,
       topPath: top ? top.path : null,
@@ -146,7 +154,7 @@ async function main() {
     if (renderOk) {
       ok(`render evidence: pageStack=${stack.length}, top.path=${top ? top.path : null}, bytes=${shot.length}`);
     } else {
-      fail(`render check failed (pageStack=${stack.length}, bytes=${shot.length}, pngMagic=${pngMagic})`);
+      fail(`render check failed (pageStack=${stack.length}, top.path=${top ? top.path : null}, bytes=${shot.length}, pngMagic=${pngMagic})`);
       allOk = false;
     }
   } catch (err) {

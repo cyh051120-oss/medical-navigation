@@ -164,19 +164,27 @@ export function systemContent(body) {
 // Closure-bound helpers (const X = makeX(bindings); keeps call sites unchanged)
 // ---------------------------------------------------------------------------
 
-// Miniprogram tsc gate (command + raw exit code captured).
-export function makeRunTypecheck(root) {
-  return function runTypecheck() {
-    const command = 'npx tsc -p hospital-ai-miniapp/tsconfig.json --noEmit';
-    const res = spawnSync('npx', ['tsc', '-p', 'hospital-ai-miniapp/tsconfig.json', '--noEmit'], {
+// Generic captured-command runner (command + raw exit code + trimmed output tail). This is the
+// single definition for the scripts/ tree; makeRunTypecheck below delegates to it.
+export function makeRunCommand(root) {
+  return function runCommand(command, args) {
+    const res = spawnSync(command, args, {
       cwd: root,
       encoding: 'utf8',
-      // Windows: `npx` is `npx.cmd`; without a shell spawnSync cannot resolve it (status=null).
+      // Windows: `npx`/`npm` are .cmd shims; without a shell spawnSync cannot resolve them (status=null).
       shell: process.platform === 'win32',
     });
     const output = `${res.stdout || ''}${res.stderr || ''}`.trim();
     const tail = output.length > 2000 ? output.slice(-2000) : output;
-    return { command, exit: res.status, output_tail: tail };
+    return { command: [command, ...args].join(' '), exit: res.status, output_tail: tail };
+  };
+}
+
+// Miniprogram tsc gate (command + raw exit code captured).
+export function makeRunTypecheck(root) {
+  const runCommand = makeRunCommand(root);
+  return function runTypecheck() {
+    return runCommand('npx', ['tsc', '-p', 'hospital-ai-miniapp/tsconfig.json', '--noEmit']);
   };
 }
 
@@ -240,12 +248,23 @@ export async function waitForHealth(port, timeoutMs = 10000) {
   const deadline = Date.now() + timeoutMs;
   let lastError = null;
   while (Date.now() < deadline) {
+    let res = null;
     try {
-      const res = await fetch(`http://127.0.0.1:${port}/api/health`);
+      res = await fetch(`http://127.0.0.1:${port}/api/health`);
       if (res.ok) return { status: res.status, response: await res.json() };
       lastError = `HTTP ${res.status}`;
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
+    } finally {
+      // Non-2xx/aborted responses must release their body, or undici keeps the socket out of the
+      // pool. A poll loop would otherwise strand one connection per attempt.
+      if (res !== null) {
+        try {
+          await res.body?.cancel();
+        } catch {
+          // Body already consumed (2xx) or closed; nothing left to release.
+        }
+      }
     }
     await delay(250);
   }

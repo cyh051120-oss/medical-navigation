@@ -1,9 +1,11 @@
 // E2E entrypoint: pre-flight prereq capture, then run the E2E spec matrix.
 // Exit 0 iff every spec passes. Never claims pass without a real assert.
 //
-// Specs:
-//   - bootstrap.spec.mjs  (T5 harness smoke) -> artifacts/e2e/bootstrap.log
-//   - ai.spec.mjs         (T33 AI matrix; mock upstream + real server)
+// Spec discovery: every `tests/e2e/*.spec.mjs` on disk (readdirSync + suffix filter). This is the
+// single authoritative list — no hand-maintained copy to drift. Run order is deterministic:
+// `bootstrap` first when present (harness smoke), then the rest alphabetically. Non-spec helpers
+// (helpers.mjs / devtools-background.mjs / run.mjs / screenshots*.mjs) are naturally excluded by
+// the `.spec.mjs` suffix.
 // Combined transcript -> artifacts/e2e/ai-all.log
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -25,20 +27,38 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const SPECS = [
-  {
-    name: 'bootstrap',
-    path: path.join(__dirname, 'bootstrap.spec.mjs'),
-    log: path.join(E2E_ARTIFACTS, 'bootstrap.log'),
-    timeout: CONFIG.timeout + 120000,
-  },
-  {
-    name: 'ai',
-    path: path.join(__dirname, 'ai.spec.mjs'),
-    log: null,
+// Per-spec timeout overrides: ai (largest matrix) gets a longer budget; every other spec uses the
+// default. Names are spec basenames (no extension). Each spec also gets its own transcript log
+// (`artifacts/e2e/<name>.log`) in addition to the combined ai-all.log.
+const DEFAULT_SPEC_TIMEOUT = CONFIG.timeout + 120000;
+const SPEC_OVERRIDES = {
+  ai: {
     timeout: Math.max(CONFIG.timeout + 120000, 600000),
   },
-];
+};
+
+/** All `*.spec.mjs` in tests/e2e, `bootstrap` pinned first, the rest alphabetical. */
+function discoverSpecs() {
+  const names = fs
+    .readdirSync(__dirname)
+    .filter((f) => f.endsWith('.spec.mjs'))
+    .map((f) => f.slice(0, -'.spec.mjs'.length))
+    .sort();
+  const ordered = names.includes('bootstrap')
+    ? ['bootstrap', ...names.filter((n) => n !== 'bootstrap')]
+    : names;
+  return ordered.map((name) => {
+    const override = SPEC_OVERRIDES[name] || {};
+    return {
+      name,
+      path: path.join(__dirname, `${name}.spec.mjs`),
+      log: path.join(E2E_ARTIFACTS, `${name}.log`),
+      timeout: override.timeout ?? DEFAULT_SPEC_TIMEOUT,
+    };
+  });
+}
+
+const SPECS = discoverSpecs();
 
 const ALL_LOG = path.join(E2E_ARTIFACTS, 'ai-all.log');
 
@@ -63,6 +83,23 @@ function probeCli(cliPath) {
 
 async function main() {
   ensureDir(E2E_ARTIFACTS);
+
+  // Zero-spec guard: an empty discovery list must never be reported as a green run.
+  if (SPECS.length === 0) {
+    const cause = `no E2E specs discovered: 0 *.spec.mjs in ${__dirname}; refusing to report "all 0 spec(s) green"`;
+    const prereq = {
+      timestamp: new Date().toISOString(),
+      spec_count: 0,
+      project_path: CONFIG.projectPath,
+      automation_port: CONFIG.port,
+    };
+    fs.writeFileSync(path.join(E2E_ARTIFACTS, 'prereq.json'), JSON.stringify(prereq, null, 2) + '\n');
+    const blockedPath = writeBlockedDoc(cause, prereq);
+    fs.writeFileSync(ALL_LOG, renderAllTranscript(prereq, [], { blocked: cause, blockedPath }));
+    failWithGuidance(cause, `restore tests/e2e/*.spec.mjs, then rerun\nblocked doc: ${blockedPath}`);
+    process.exitCode = 1;
+    return;
+  }
 
   const cliExists = fs.existsSync(CONFIG.cliPath);
   const portReachable = await tcpProbe(CONFIG.port, '127.0.0.1', 500);
@@ -128,15 +165,13 @@ async function main() {
   const failed = results.filter((result) => result.exit_code !== 0);
   const passed = failed.length === 0;
 
-  // Preserve the bootstrap transcript artifact for its own spec.
+  // One transcript per spec (artifacts/e2e/<name>.log) so any single failure is reviewable alone.
   for (const spec of SPECS) {
-    if (spec.log !== null) {
-      const result = results.filter((item) => item.name === spec.name)[0];
-      fs.writeFileSync(
-        spec.log,
-        renderTranscript(prereq, [`${result?.output || ''}`], result ? result.exit_code : null)
-      );
-    }
+    const result = results.filter((item) => item.name === spec.name)[0];
+    fs.writeFileSync(
+      spec.log,
+      renderTranscript(spec, prereq, [`${result?.output || ''}`], result ? result.exit_code : null)
+    );
   }
 
   fs.writeFileSync(ALL_LOG, renderAllTranscript(prereq, results, null));
@@ -168,11 +203,11 @@ async function main() {
   process.exitCode = 1;
 }
 
-function renderTranscript(prereq, parts, exitCode) {
+function renderTranscript(spec, prereq, parts, exitCode) {
   const bar = '='.repeat(64);
   return [
     bar,
-    '# E2E bootstrap transcript',
+    `# E2E spec transcript: ${spec.name}`,
     `# timestamp: ${new Date().toISOString()}`,
     `# prereq: ${path.join(E2E_ARTIFACTS, 'prereq.json')}`,
     bar,
@@ -180,7 +215,7 @@ function renderTranscript(prereq, parts, exitCode) {
     '## prereq.json',
     JSON.stringify(prereq, null, 2),
     '',
-    '## bootstrap.spec.mjs output',
+    `## ${path.basename(spec.path)} output`,
     parts.join('\n'),
     '',
     `## exit_code: ${exitCode}`,
