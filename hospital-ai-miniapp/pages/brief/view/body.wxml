@@ -1,0 +1,149 @@
+<!-- pages/brief/view/body.wxml — 就医摘要主体（任务 20/21）。
+     双宿主共享：wrapper 页与 workspace section 组件都 include 本文件；
+     根壳（.brief 的 class / inline scale 变量 / app-shell）与 <app-sidebar> 由宿主提供，不在此处。
+     无障碍：交互节点的 aria-role / aria-label 随主体保留；缩放与高对比钩子在宿主根节点。 -->
+  <view class="hero">
+    <text class="hero__title">{{copy.title}}</text>
+    <text class="hero__sub">{{copy.intro}}</text>
+  </view>
+
+  <view class="select" wx:if="{{hasSourceRecords || profileAvailable}}">
+    <view class="select__head">
+      <text class="select__title">{{copy.selectionTitle}}</text>
+      <text class="select__count">{{copy.selectedPrefix}} {{selectedCount}} {{copy.selectedUnit}}</text>
+    </view>
+    <view class="select__tools">
+      <view class="btn btn--ghost" bindtap="onSelectAll" aria-role="button" aria-label="{{copy.selectAll}}">{{copy.selectAll}}</view>
+      <view class="btn btn--ghost" bindtap="onClearSelection" aria-role="button" aria-label="{{copy.clearSelection}}">{{copy.clearSelection}}</view>
+    </view>
+
+    <view class="profile" wx:if="{{profileAvailable}}">
+      <text class="profile__tag">{{copy.profileTitle}}</text>
+      <text class="profile__text">{{copy.profileIncluded}}</text>
+    </view>
+    <text class="profile__empty" wx:else>{{copy.profileEmpty}}</text>
+
+    <view class="group">
+      <text class="group__title">{{copy.symptomsGroup}}</text>
+      <view
+        class="row {{item.selected ? 'is-on' : ''}}"
+        wx:for="{{symptomRows}}"
+        wx:key="id"
+        data-id="{{item.id}}"
+        bindtap="onToggleSymptom"
+        aria-role="checkbox"
+        aria-checked="{{item.selected}}"
+        aria-label="{{item.title}}"
+      >
+        <view class="row__check {{item.selected ? 'is-on' : ''}}"></view>
+        <view class="row__body">
+          <text class="row__title">{{item.title}}</text>
+          <text class="row__meta">{{item.meta}}</text>
+        </view>
+      </view>
+      <text class="group__empty" wx:if="{{symptomRows.length === 0}}">{{copy.noSymptoms}}</text>
+    </view>
+
+    <view class="group">
+      <text class="group__title">{{copy.notesGroup}}</text>
+      <view
+        class="row {{item.selected ? 'is-on' : ''}}"
+        wx:for="{{noteRows}}"
+        wx:key="id"
+        data-id="{{item.id}}"
+        bindtap="onToggleNote"
+        aria-role="checkbox"
+        aria-checked="{{item.selected}}"
+        aria-label="{{item.title}}"
+      >
+        <view class="row__check {{item.selected ? 'is-on' : ''}}"></view>
+        <view class="row__body">
+          <text class="row__title">{{item.title}}</text>
+          <text class="row__meta">{{item.meta}}</text>
+        </view>
+      </view>
+      <text class="group__empty" wx:if="{{noteRows.length === 0}}">{{copy.noNotes}}</text>
+    </view>
+
+    <view class="group">
+      <text class="group__title">{{copy.questionsGroup}}</text>
+      <view
+        class="row {{item.selected ? 'is-on' : ''}}"
+        wx:for="{{questionRows}}"
+        wx:key="id"
+        data-id="{{item.id}}"
+        bindtap="onToggleQuestion"
+        aria-role="checkbox"
+        aria-checked="{{item.selected}}"
+        aria-label="{{item.title}}"
+      >
+        <view class="row__check {{item.selected ? 'is-on' : ''}}"></view>
+        <view class="row__body">
+          <text class="row__title">{{item.title}}</text>
+          <text class="row__meta">{{item.meta}}</text>
+        </view>
+      </view>
+      <text class="group__empty" wx:if="{{questionRows.length === 0}}">{{copy.noQuestions}}</text>
+    </view>
+  </view>
+
+  <view class="mhp-empty" wx:else>
+    <view class="mhp-empty__badge"><view class="mhp-ico mhp-ico--clipboard-list"></view></view>
+    <text class="mhp-empty__text">{{emptyText}}</text>
+  </view>
+
+  <view class="generate">
+    <view class="btn btn--primary" bindtap="onGenerate" aria-role="button" aria-label="{{copy.generate}}">{{copy.generate}}</view>
+  </view>
+
+  <text class="notice mhp-error" wx:if="{{errorText}}">{{errorText}}</text>
+  <text class="notice notice--ok" wx:if="{{hint}}">{{hint}}</text>
+
+  <view class="editor">
+    <text class="editor__title">{{copy.editorTitle}}</text>
+    <text class="editor__notice">{{copy.editorRawNotice}}</text>
+    <text class="editor__notice">{{copy.editorOrganizedNotice}}</text>
+    <textarea
+      class="editor__area"
+      value="{{content}}"
+      placeholder="{{copy.editorPlaceholder}}"
+      bindinput="onContentInput"
+      maxlength="-1"
+    />
+    <view class="editor__actions">
+      <view class="btn btn--primary" bindtap="onSave" aria-role="button" aria-label="{{buttons.save}}">{{buttons.save}}</view>
+      <view class="btn btn--ghost" bindtap="onCopy" aria-role="button" aria-label="{{buttons.copy}}">{{buttons.copy}}</view>
+    </view>
+    <text class="editor__saved" wx:if="{{savedAt}}">{{copy.savedAtPrefix}}：{{savedAt}}</text>
+  </view>
+
+  <view class="select" wx:if="{{hasSavedBriefs}}">
+    <text class="select__title">{{copy.savedListTitle}}</text>
+    <view class="row" wx:for="{{savedBriefs}}" wx:key="id">
+      <view class="row__body">
+        <text class="row__title">{{item.preview}}</text>
+        <text class="row__meta">{{copy.savedTimeLabel}} {{item.savedLabel}}</text>
+        <text class="row__meta" wx:if="{{item.exportedLabel}}">{{copy.savedAtPrefix}} {{item.exportedLabel}}</text>
+      </view>
+      <view class="btn btn--ghost" data-id="{{item.id}}" bindtap="onOpenBrief" aria-role="button" aria-label="{{copy.open}}">{{copy.open}}</view>
+      <view class="btn btn--ghost" data-id="{{item.id}}" bindtap="onDeleteBrief" aria-role="button" aria-label="删除这段摘要">{{buttons.delete}}</view>
+    </view>
+  </view>
+
+  <view class="poster">
+    <text class="poster__title">{{poster.exportTitle}}</text>
+    <text class="poster__notice">{{poster.exportNotice}}</text>
+    <view class="mhp-loading" wx:if="{{exporting}}">
+      <view class="mhp-loading__spinner"></view>
+      <text class="mhp-loading__text">{{poster.exporting}}</text>
+    </view>
+    <view class="poster__actions">
+      <view class="btn btn--primary" bindtap="onExportImage" aria-role="button" aria-label="{{poster.exportImage}}">{{poster.exportImage}}</view>
+      <view class="btn btn--ghost" wx:if="{{previewPath}}" bindtap="onSaveImage" aria-role="button" aria-label="{{poster.saveImage}}">{{poster.saveImage}}</view>
+      <button class="btn btn--ghost poster__share" open-type="share" wx:if="{{previewPath}}" aria-label="{{poster.share}}">{{poster.share}}</button>
+    </view>
+    <image class="poster__preview" wx:if="{{previewPath}}" src="{{previewPath}}" mode="widthFix" />
+    <text class="notice mhp-error" wx:if="{{posterOverflow}}">{{poster.overflowHint}}</text>
+  </view>
+
+  <canvas type="2d" id="briefPoster" class="poster__canvas"></canvas>
