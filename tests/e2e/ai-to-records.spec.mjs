@@ -36,7 +36,7 @@ import {
   section,
   delay,
   md5,
-  readSafe,
+  readPageBundle,
   withTimeout,
   aiCopyBlock,
   makeCaptureScreenshot,
@@ -424,10 +424,10 @@ const FORBIDDEN_STRINGS = [
 const SEVERITY_TOKENS = ['severity', '严重程度', '严重度', '危急程度'];
 
 function staticInvariantChecks() {
-  const ts = readSafe(path.join(AI_DIR, 'ai.ts'));
-  const wxml = readSafe(path.join(AI_DIR, 'ai.wxml'));
-  const wxss = readSafe(path.join(AI_DIR, 'ai.wxss'));
-  const json = readSafe(path.join(AI_DIR, 'ai.json'));
+  const ts = readPageBundle('ai', 'ts');
+  const wxml = readPageBundle('ai', 'wxml');
+  const wxss = readPageBundle('ai', 'wxss');
+  const json = readPageBundle('ai', 'json');
   const combined = [ts, wxml, wxss, json].join('\n');
   const copy = aiCopyBlock();
 

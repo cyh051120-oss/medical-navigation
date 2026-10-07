@@ -128,6 +128,7 @@ const payload = {
   controlledDepartments: prompts.CONTROLLED_DEPARTMENTS,
   decisionTerms: validate.DECISION_TERMS,
   referralTerms: validate.REFERRAL_TERMS,
+  emergencyCue: validate.hasEmergencyCue(redflags.SAFETY_NOTICE),
   aiCopy: texts.AI,
   degraded: texts.DEGRADED,
   safety: texts.SAFETY,
@@ -697,6 +698,7 @@ async function main() {
     sourcesRun.sources !== null &&
     typeof sourcesRun.sources.safetyNotice === 'string' &&
     sourcesRun.sources.safetyNotice.length > 0 &&
+    typeof sourcesRun.sources.emergencyCue === 'boolean' &&
     sourcesRun.sources.guards.referral_rejected === true &&
     sourcesRun.sources.guards.dose_rejected === true &&
     sourcesRun.sources.guards.valid_accepted === true;
@@ -1037,9 +1039,10 @@ async function main() {
     // P1-8: SAFETY_NOTICE deliberately carries the emergency call「拨打 120」. That is legal ONLY
     // because the notice also carries an emergency cue (立即/马上/急诊/急救) in the same clause;
     // every other DECISION term stays banned. hasEmergencyCue comes from server/validate.ts so the
-    // cue rule has a single definition; the emergency-call term list mirrors validate.ts
+    // cue rule has a single definition; it is computed once in the tsx sources harness and read
+    // here from the sources payload. The emergency-call term list mirrors validate.ts
     // EMERGENCY_CALL_TERMS. (弱线索「尽快」已于 P1-8 tightening 移除，不再豁免。)
-    const emergencyCuePresent = validate.hasEmergencyCue(SAFETY_NOTICE);
+    const emergencyCuePresent = SC.emergencyCue === true;
     const emergencyAllowedTerms = ['拨打', '120'];
     const bannedDecisionTerms = DECISION.filter((t) => {
       if (SAFETY_NOTICE.indexOf(t) === -1) return false;

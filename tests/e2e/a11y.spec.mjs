@@ -32,12 +32,12 @@ import {
   delay,
   md5,
   readSafe,
+  readPageBundle,
 } from './helpers.mjs';
 
 const MINIAPP_ROOT = CONFIG.projectPath;
 const APP_WXSS = path.join(MINIAPP_ROOT, 'app.wxss');
 const TEXTS_TS = path.join(MINIAPP_ROOT, 'config', 'texts.ts');
-const SETTINGS_DIR = path.join(MINIAPP_ROOT, 'pages', 'settings');
 
 // The 8 pages registered in app.json (the scaling surface).
 const PAGES = [
@@ -81,10 +81,9 @@ const HC_CLASS_BIND = /is-hc/;
  */
 function staticScan() {
   const pages = PAGES.map((name) => {
-    const dir = path.join(MINIAPP_ROOT, 'pages', name);
-    const wxss = readSafe(path.join(dir, `${name}.wxss`));
-    const wxml = readSafe(path.join(dir, `${name}.wxml`));
-    const ts = readSafe(path.join(dir, `${name}.ts`));
+    const wxss = readPageBundle(name, 'wxss');
+    const wxml = readPageBundle(name, 'wxml');
+    const ts = readPageBundle(name, 'ts');
     const fontLines = wxss.split(/\r?\n/).filter((line) => line.includes('font-size'));
     const fontAllScaled =
       fontLines.length > 0 && fontLines.every((line) => SCALED_FONT.test(line));
@@ -111,7 +110,7 @@ function staticScan() {
 
   const appWxss = readSafe(APP_WXSS);
   const textsSrc = readSafe(TEXTS_TS);
-  const settingsWxml = readSafe(path.join(SETTINGS_DIR, 'settings.wxml'));
+  const settingsWxml = readPageBundle('settings', 'wxml');
 
   return {
     pages,

@@ -541,6 +541,61 @@ export function readSafe(filePath) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Page source bundle (S-layer static scan).
+//
+// After the workspace-SPA refactor a page's content can live either in the
+// legacy wrapper paths (pages/<n>/<n>.{ts,wxml,wxss,json}) or in the extracted
+// view files (pages/<n>/view/*). The static-scan assertions must see the whole
+// page regardless of which layout it is currently in, so every text read goes
+// through these helpers. Missing files are skipped (never throws); for a page
+// that has not migrated yet the wrapper is the only existing file and the
+// combined result is byte-identical to the old `<n>.<ext>` read.
+//
+//   'ts'   → <n>.ts  + view/controller.ts? + view/view.ts?
+//   'wxml' → <n>.wxml + view/body.wxml?    + view/view.wxml?
+//   'wxss' → <n>.wxss + view/body.wxss?    + view/view.wxss?
+//   'json' → <n>.json only (the wrapper always owns the page config)
+// ---------------------------------------------------------------------------
+
+const PAGE_BUNDLE_EXTENSIONS = {
+  ts: (dir, name) => [`${name}.ts`, 'view/controller.ts', 'view/view.ts'],
+  wxml: (dir, name) => [`${name}.wxml`, 'view/body.wxml', 'view/view.wxml'],
+  wxss: (dir, name) => [`${name}.wxss`, 'view/body.wxss', 'view/view.wxss'],
+  json: (dir, name) => [`${name}.json`],
+};
+
+/**
+ * Per-file breakdown of a page's source bundle for one extension. Returns an
+ * array `[{ path, exists, text }]` with `path` relative to the project root,
+ * preserving the bundle order. Used by the scan-mirror evidence tool for
+ * "target file → match count" attribution; assertions use `readPageBundle`.
+ */
+export function pageBundleParts(name, ext, projectPath = CONFIG.projectPath) {
+  const make = PAGE_BUNDLE_EXTENSIONS[ext];
+  if (!make) {
+    throw new Error(`pageBundleParts: unsupported ext '${ext}' (expected ts|wxml|wxss|json)`);
+  }
+  const dir = path.join(projectPath, 'pages', name);
+  return make(dir, name).map((rel) => {
+    const filePath = path.join(dir, rel);
+    const exists = fs.existsSync(filePath);
+    return { path: path.relative(projectPath, filePath), exists, text: exists ? readSafe(filePath) : '' };
+  });
+}
+
+/**
+ * Combined source text of a page for one extension (wrapper + view files that
+ * exist, joined by '\n', missing files skipped). See `PAGE_BUNDLE_EXTENSIONS`
+ * above for the exact file order.
+ */
+export function readPageBundle(name, ext, projectPath = CONFIG.projectPath) {
+  return pageBundleParts(name, ext, projectPath)
+    .filter((part) => part.exists)
+    .map((part) => part.text)
+    .join('\n');
+}
+
 export function md5(buffer) {
   return crypto.createHash('md5').update(buffer).digest('hex');
 }

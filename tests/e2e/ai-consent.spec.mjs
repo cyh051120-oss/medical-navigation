@@ -38,7 +38,7 @@ import {
   tcpProbe,
   delay,
   md5,
-  readSafe,
+  readPageBundle,
   withTimeout,
   aiCopyBlock,
   makeCaptureScreenshot,
@@ -220,11 +220,13 @@ const enabledPreview = {
   notice: inst.data.previewMemoryNotice,
   titles: inst.data.previewSections.map(function (s) { return s.title; }),
 };
-check('enable-preview-notice', 'enabled + autoMemory on: send opens the preview with the auto-extract notice line; previewSections titles unchanged; zero request before confirm',
+// health probes (/api/health) are background status checks, not AI requests — exclude them
+const nonHealthRequests = calls.request.filter(function (r) { return String(r.url).indexOf('/api/health') === -1; }).length;
+check('enable-preview-notice', 'enabled + autoMemory on: send opens the preview with the auto-extract notice line; previewSections titles unchanged; zero AI request before confirm (health probes excluded)',
   idleStatus === 'idle' && sendEnabled.reason === 'preview' && enabledPreview.open === true &&
     enabledPreview.notice === EXTRACT_NOTICE && enabledPreview.titles.indexOf('对话') !== -1 &&
-    calls.request.length === 0,
-  { idle: idleStatus, preview: enabledPreview, requests: calls.request.length });
+    nonHealthRequests === 0,
+  { idle: idleStatus, preview: enabledPreview, requests_non_health: nonHealthRequests, requests_total: calls.request.length });
 
 // h3 proxy failure -> status offline + error message + input preserved + zero fake blocks
 requestMode = 'unreachable';
@@ -486,10 +488,10 @@ const FORBIDDEN_STRINGS = [
 const SEVERITY_TOKENS = ['severity', '严重程度', '严重度', '危急程度'];
 
 function staticInvariantChecks() {
-  const ts = readSafe(path.join(AI_DIR, 'ai.ts'));
-  const wxml = readSafe(path.join(AI_DIR, 'ai.wxml'));
-  const wxss = readSafe(path.join(AI_DIR, 'ai.wxss'));
-  const json = readSafe(path.join(AI_DIR, 'ai.json'));
+  const ts = readPageBundle('ai', 'ts');
+  const wxml = readPageBundle('ai', 'wxml');
+  const wxss = readPageBundle('ai', 'wxss');
+  const json = readPageBundle('ai', 'json');
   const combined = [ts, wxml, wxss, json].join('\n');
   const copy = aiCopyBlock();
 

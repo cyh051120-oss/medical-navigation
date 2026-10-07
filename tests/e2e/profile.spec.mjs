@@ -37,7 +37,7 @@ import {
   section,
   delay,
   md5,
-  readSafe,
+  readPageBundle,
   makeCaptureScreenshot,
 } from './helpers.mjs';
 
@@ -255,10 +255,10 @@ function runLogicHarness() {
 const FORBIDDEN_STRINGS = ['AI 注入', 'health_profile', 'hza_', 'System Prompt', '系统提示词'];
 
 function staticInvariantChecks() {
-  const ts = readSafe(path.join(PROFILE_DIR, 'profile.ts'));
-  const wxml = readSafe(path.join(PROFILE_DIR, 'profile.wxml'));
-  const wxss = readSafe(path.join(PROFILE_DIR, 'profile.wxss'));
-  const json = readSafe(path.join(PROFILE_DIR, 'profile.json'));
+  const ts = readPageBundle('profile', 'ts');
+  const wxml = readPageBundle('profile', 'wxml');
+  const wxss = readPageBundle('profile', 'wxss');
+  const json = readPageBundle('profile', 'json');
   const combined = [ts, wxml, wxss, json].join('\n');
 
   const forbidden = FORBIDDEN_STRINGS.filter((term) => combined.includes(term));

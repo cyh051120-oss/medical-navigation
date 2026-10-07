@@ -40,6 +40,7 @@ import {
   delay,
   md5,
   readSafe,
+  readPageBundle,
   makeCaptureScreenshot,
 } from './helpers.mjs';
 
@@ -60,6 +61,7 @@ const E2E_DIR = E2E_ARTIFACTS;
 const QA_FAILURE_PATH = path.join(path.resolve(E2E_ARTIFACTS, '..'), 'qa', '15-failure.txt');
 const MINIAPP_ROOT = CONFIG.projectPath;
 const SETTINGS_DIR = path.join(MINIAPP_ROOT, 'pages', 'settings');
+const ATTACHMENTS_TS = path.join(MINIAPP_ROOT, 'shared', 'services', 'attachments.ts');
 
 // ---------------------------------------------------------------------------
 // Layer 1: node/page-logic harness (real page methods + Map wx shim)
@@ -512,10 +514,11 @@ function runLogicHarness() {
 const FORBIDDEN_STRINGS = ['AI 注入', 'health_profile', 'hza_', 'System Prompt', '系统提示词'];
 
 function staticInvariantChecks() {
-  const ts = readSafe(path.join(SETTINGS_DIR, 'settings.ts'));
-  const wxml = readSafe(path.join(SETTINGS_DIR, 'settings.wxml'));
-  const wxss = readSafe(path.join(SETTINGS_DIR, 'settings.wxss'));
-  const json = readSafe(path.join(SETTINGS_DIR, 'settings.json'));
+  const ts = readPageBundle('settings', 'ts');
+  const wxml = readPageBundle('settings', 'wxml');
+  const wxss = readPageBundle('settings', 'wxss');
+  const json = readPageBundle('settings', 'json');
+  const attachmentsTs = readSafe(ATTACHMENTS_TS);
   const combined = [ts, wxml, wxss, json].join('\n');
 
   const forbidden = FORBIDDEN_STRINGS.filter((term) => combined.includes(term));
@@ -525,7 +528,14 @@ function staticInvariantChecks() {
     /PRIVACY_NOTICE_VERSION/.test(ts) && /from\s+['"]\.\.\/\.\.\/app['"]/.test(ts);
   const usesDeletionApis =
     /deleteAll\s*\(/.test(ts) && /purgeLegacy\s*\(/.test(ts) && /clearAttachments\s*\(/.test(ts);
-  const usesExportWrite = /writeFile\s*\(/.test(ts) && /USER_DATA_PATH/.test(ts);
+  // Export-write intent: the settings page still writes the file (writeFile) and now
+  // obtains the sandbox destination via the extracted exportFilePath() helper, whose
+  // USER_DATA_PATH resolution lives in shared/services/attachments.ts. Assert all three
+  // so the page->sandbox linkage stays covered (path logic relocated, intent unchanged).
+  const usesExportWrite =
+    /writeFile\s*\(/.test(ts) &&
+    /exportFilePath\s*\(/.test(ts) &&
+    /USER_DATA_PATH/.test(attachmentsTs);
   const usesOplog = /oplog\.append\s*\(/.test(ts);
 
   let jsonParses = false;

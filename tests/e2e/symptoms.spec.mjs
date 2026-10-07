@@ -33,7 +33,7 @@ import {
   section,
   delay,
   md5,
-  readSafe,
+  readPageBundle,
   makeCaptureScreenshot,
 } from './helpers.mjs';
 
@@ -180,11 +180,12 @@ check('add-two', 'add 2 records via the form; the 2nd stores 1 attachment under 
     savedB === true && attachFiles().length === 1 && inst.data.formOpen === false && inst.data.hasRecords === true,
   { count: list2.length, a_tags: storedA ? storedA.tags : null, b_attachment: storedB ? storedB.attachment : null, attach_files: attachFiles(), formOpen: inst.data.formOpen });
 
-// h3 list order desc
+// h3 list order desc (view rows carry occurredLabel only — assert exact labels + stored DESC order)
 const rows3 = inst.data.rows;
 check('list-order-desc', 'list sorted by occurredAt DESC (later first) with duration/attachment/timestamp labels',
   rows3.length === 2 && rows3[0].id === storedB.id && rows3[1].id === storedA.id &&
-    rows3[0].occurredAt === storedB.occurredAt && rows3[0].occurredLabel.indexOf('2026-09-03') >= 0 &&
+    storedB.occurredAt > storedA.occurredAt && rows3[0].occurredLabel === '2026-09-03 14:30' &&
+    rows3[1].occurredLabel === '2026-09-01 09:00' &&
     rows3[0].hasAttachment === true && rows3[1].hasAttachment === false &&
     rows3[0].createdLabel !== '' && rows3[0].updatedLabel !== '',
   { order: rows3.map(function (r) { return r.id; }), labels: rows3.map(function (r) { return r.occurredLabel; }), attach: rows3.map(function (r) { return r.hasAttachment; }), stamps: rows3.map(function (r) { return r.createdLabel + '/' + r.updatedLabel; }) });
@@ -337,10 +338,10 @@ const FORBIDDEN_STRINGS = [
 const SEVERITY_TOKENS = ['severity', '严重程度', '严重度', '危急程度'];
 
 function staticInvariantChecks() {
-  const ts = readSafe(path.join(SYMPTOMS_DIR, 'symptoms.ts'));
-  const wxml = readSafe(path.join(SYMPTOMS_DIR, 'symptoms.wxml'));
-  const wxss = readSafe(path.join(SYMPTOMS_DIR, 'symptoms.wxss'));
-  const json = readSafe(path.join(SYMPTOMS_DIR, 'symptoms.json'));
+  const ts = readPageBundle('symptoms', 'ts');
+  const wxml = readPageBundle('symptoms', 'wxml');
+  const wxss = readPageBundle('symptoms', 'wxss');
+  const json = readPageBundle('symptoms', 'json');
   const combined = [ts, wxml, wxss, json].join('\n');
 
   const forbidden = FORBIDDEN_STRINGS.filter((term) => combined.includes(term));

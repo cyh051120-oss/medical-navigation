@@ -36,7 +36,7 @@ import {
   section,
   delay,
   md5,
-  readSafe,
+  readPageBundle,
   withTimeout,
   aiCopyBlock,
   waitForHealth,
@@ -224,7 +224,8 @@ await inst2.setMode('organize');
 inst2.onInput({ detail: { value: '最近一周头痛，睡不好' } });
 const orgSend = await inst2.onSend();
 const orgPreview = { open: inst2.data.previewOpen, titles: inst2.data.previewSections.map(function (s) { return s.title; }) };
-const reqBeforeConfirm = calls.request.length;
+// health probes (/api/health) are background status checks, not AI requests — exclude them
+const reqBeforeConfirm = calls.request.filter(function (r) { return String(r.url).indexOf('/api/health') === -1; }).length;
 const orgConfirmed = await inst2.onConfirmSend();
 const orgAskReq = calls.request.filter(function (r) { return String(r.url).indexOf('/api/ask') !== -1; }).pop();
 const orgMsg = inst2.data.messages[inst2.data.messages.length - 1];
@@ -234,7 +235,7 @@ check('organize-send', 'organize: preview first (no ask request yet), then struc
     hasBlock(orgMsg, 'list', AI.sectionPoints) && hasBlock(orgMsg, 'extracted', AI.sectionExtracted) &&
     hasBlock(orgMsg, 'list', AI.sectionUnknowns) && hasBlock(orgMsg, 'list', AI.sectionQuestions) &&
     inst2.data.input === '' && orgAskReq !== undefined,
-  { preview: orgPreview, confirmed: orgConfirmed, block_titles: blockTitles(orgMsg), requests: calls.request.length });
+  { preview: orgPreview, confirmed: orgConfirmed, block_titles: blockTitles(orgMsg), requests: calls.request.length, requests_before_confirm: reqBeforeConfirm });
 
 // h6 preview body shape (consent true + mode)
 const orgBody = JSON.parse(orgAskReq.data);
@@ -447,10 +448,12 @@ inst.setData({ mode: 'consult' });
 modalAnswer = false;
 inst.onInput({ detail: { value: '最近胃不舒服' } });
 const gated = await inst.onSend();
-check('send-consent-gate', 'consult send without ack: modal, cancel -> no preview and no request',
-  gated.reason === 'consent' && inst.data.previewOpen === false && calls.request.length === 0 &&
+// health probes (/api/health) are background status checks, not AI requests — exclude them
+const gatedNonHealth = calls.request.filter(function (r) { return String(r.url).indexOf('/api/health') === -1; }).length;
+check('send-consent-gate', 'consult send without ack: modal, cancel -> no preview and no AI request (health probes excluded)',
+  gated.reason === 'consent' && inst.data.previewOpen === false && gatedNonHealth === 0 &&
     inst.data.hint === AI.aiDisabledHint && store.get('mhp_ai_consult_ack') === undefined,
-  { gated: gated, requests: calls.request.length, hint: inst.data.hint });
+  { gated: gated, requests_non_health: gatedNonHealth, requests_total: calls.request.length, hint: inst.data.hint });
 const gatedRequests = calls.request.length;
 
 // h23 auto-extract failure is silent-degraded
@@ -511,7 +514,7 @@ flog('local_organized: ' + (localFacts.returned.organized === true));
 flog('local_blocks: ' + JSON.stringify(localFacts.blocks));
 flog('local_requests_delta: ' + localFacts.requests_delta + ' (expected 0)');
 flog('scenario: consult send without consent ack, modal cancelled');
-flog('send_consent_gated_reason: ' + JSON.stringify(gated.reason) + ', requests: ' + gatedRequests);
+flog('send_consent_gated_reason: ' + JSON.stringify(gated.reason) + ', requests_non_health: ' + gatedNonHealth + ', requests_total: ' + gatedRequests);
 flog('scenario: aiEnabled=false');
 flog('ai_disabled_error_text: ' + JSON.stringify(skipMsg.errorText) + ', requests: ' + skipRequests);
 flog('verdict: PASS (upstream failure is surfaced with the input preserved and an offline local-organize entry; no fake AI output anywhere)');
@@ -607,10 +610,10 @@ const FORBIDDEN_STRINGS = [
 const SEVERITY_TOKENS = ['severity', '严重程度', '严重度', '危急程度'];
 
 function staticInvariantChecks() {
-  const ts = readSafe(path.join(AI_DIR, 'ai.ts'));
-  const wxml = readSafe(path.join(AI_DIR, 'ai.wxml'));
-  const wxss = readSafe(path.join(AI_DIR, 'ai.wxss'));
-  const json = readSafe(path.join(AI_DIR, 'ai.json'));
+  const ts = readPageBundle('ai', 'ts');
+  const wxml = readPageBundle('ai', 'wxml');
+  const wxss = readPageBundle('ai', 'wxss');
+  const json = readPageBundle('ai', 'json');
   const combined = [ts, wxml, wxss, json].join('\n');
   const copy = aiCopyBlock();
 

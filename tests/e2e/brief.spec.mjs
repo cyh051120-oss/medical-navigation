@@ -37,7 +37,7 @@ import {
   section,
   delay,
   md5,
-  readSafe,
+  readPageBundle,
   makeCaptureScreenshot,
   makeRenderEvidence,
 } from './helpers.mjs';
@@ -200,21 +200,21 @@ check('edit-content', 'edit the textarea content: content updated and savedAt cl
   inst.data.content === '编辑后的摘要内容（用户改动）' && inst.data.savedAt === '',
   { content: inst.data.content, savedAt: inst.data.savedAt });
 
-// h7 save -> VisitBrief written, exact field set, exportedAt ISO, sourceIds kept
+// h7 save -> VisitBrief written, exact field set, sourceIds kept; 保存 ≠ 导出 — exportedAt stays null until a real export
 const savedAtBefore = inst.data.sourceIds.slice();
 const save7 = inst.onSave();
 const briefs7 = rawList(BRIEFS_KEY);
 const EXPECTED_KEYS = 'content,createdAt,exportedAt,id,sourceIds,updatedAt';
 const stored7 = briefs7[0];
 const keySetOk = briefs7.length === 1 && Object.keys(stored7).sort().join(',') === EXPECTED_KEYS;
-check('save-brief', 'save: VisitBrief written via records.briefs (content/sourceIds/exportedAt), exact field set, ISO exportedAt',
+check('save-brief', 'save: VisitBrief written via records.briefs (content/sourceIds); exact field set; exportedAt stays null until copy/export (保存 ≠ 导出)',
   save7.saved === true && keySetOk === true &&
     stored7.content === '编辑后的摘要内容（用户改动）' &&
     JSON.stringify(stored7.sourceIds) === JSON.stringify(savedAtBefore) &&
-    isIso(stored7.exportedAt) && save7.exportedAt === stored7.exportedAt &&
-    inst.data.savedAt !== '' && lastToast() === copy.saveHint && lastToastIsSuccess() === true,
+    stored7.exportedAt === null && save7.exportedAt === null &&
+    inst.data.savedAt === '' && lastToast() === copy.saveHint && lastToastIsSuccess() === true,
   { saved: save7.saved, keys: stored7 ? Object.keys(stored7).sort().join(',') : '', expected_keys: EXPECTED_KEYS,
-    content_matches: stored7.content === '编辑后的摘要内容（用户改动）', exported_at_iso: isIso(stored7.exportedAt),
+    content_matches: stored7.content === '编辑后的摘要内容（用户改动）', exported_at: stored7.exportedAt,
     savedAt_display: inst.data.savedAt });
 
 // h8 copy success: clipboard payload === edited text; success toast
@@ -223,6 +223,12 @@ check('copy-ok', 'copy: clipboard payload equals the edited text; success toast'
   copyOk === true && lastClipboard() === '编辑后的摘要内容（用户改动）' &&
     inst.data.errorText === '' && lastToast() === copy.copyDone && lastToastIsSuccess() === true,
   { returned: copyOk, clipboard: lastClipboard(), toast: lastToast(), error: inst.data.errorText });
+
+// h8b a real copy is an export: exportedAt written back (ISO) + savedAt display set (保存 ≠ 导出 design)
+const stored8b = rawList(BRIEFS_KEY)[0];
+check('copy-marks-exported', 'copy success writes exportedAt (ISO) back to the saved brief and refreshes the savedAt display',
+  stored8b !== undefined && isIso(stored8b.exportedAt) && inst.data.savedAt !== '',
+  { exported_at_iso: stored8b ? isIso(stored8b.exportedAt) : false, savedAt_display: inst.data.savedAt });
 
 // h9 generate with EMPTY selection -> refused, previous content preserved, hint, no write
 inst.onClearSelection();
@@ -386,10 +392,10 @@ const FORBIDDEN_STRINGS = [
 const SEVERITY_TOKENS = ['severity', '严重程度', '严重度', '危急程度'];
 
 function staticInvariantChecks() {
-  const ts = readSafe(path.join(BRIEF_DIR, 'brief.ts'));
-  const wxml = readSafe(path.join(BRIEF_DIR, 'brief.wxml'));
-  const wxss = readSafe(path.join(BRIEF_DIR, 'brief.wxss'));
-  const json = readSafe(path.join(BRIEF_DIR, 'brief.json'));
+  const ts = readPageBundle('brief', 'ts');
+  const wxml = readPageBundle('brief', 'wxml');
+  const wxss = readPageBundle('brief', 'wxss');
+  const json = readPageBundle('brief', 'json');
   const combined = [ts, wxml, wxss, json].join('\n');
 
   const forbidden = FORBIDDEN_STRINGS.filter((term) => combined.includes(term));

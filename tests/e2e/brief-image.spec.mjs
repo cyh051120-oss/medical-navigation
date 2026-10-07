@@ -40,6 +40,7 @@ import {
   delay,
   md5,
   readSafe,
+  readPageBundle,
   withTimeout,
   hasPngMagic,
   makeCaptureScreenshot,
@@ -222,7 +223,7 @@ const exportOk = exp.exported === true && exp.path === TEMP_PATH && inst.data.pr
 check('page-export-ok', 'page: onExportImage draws + exports a 750x1334 temp file into previewPath', exportOk,
   { exported: exp.exported, path: exp.path, previewPath: inst.data.previewPath, opts: opts, canvasSize: canvasState.node ? { w: canvasState.node.width, h: canvasState.node.height } : null });
 check('page-export-draws-header', 'page: canvas received the header text', ctxTextsAfter.indexOf('就医准备助手') !== -1, { texts: ctxTextsAfter.slice(0, 4) });
-check('page-export-draws-body', 'page: canvas received the summary body text', ctxTextsAfter.some(function (t) { return t.indexOf('饭后有点胀') !== -1; }), { body_texts: ctxTextsAfter.filter(function (t) { return t.indexOf('饭后') !== -1; }) });
+check('page-export-draws-body', 'page: canvas received the summary body text (wrap fragments concatenate to the full line)', ctxTextsAfter.join('').indexOf('饭后有点胀') !== -1, { body_texts: ctxTextsAfter.filter(function (t) { return t.indexOf('饭后') !== -1; }) });
 const footerDrawn = ctxTextsAfter.indexOf('用户自述 / 待医生确认') !== -1 && ctxTextsAfter.some(function (t) { return t.indexOf('生成时间：') === 0; });
 check('page-export-draws-footer', 'page: canvas received footer time + the fixed disclaimer', footerDrawn, { footer: ctxTextsAfter.filter(function (t) { return t.indexOf('生成时间') === 0 || t.indexOf('用户自述') === 0; }) });
 const drawnForbidden = FORBIDDEN.filter(function (w) { return ctxTextsAfter.join(' ').indexOf(w) !== -1; });
@@ -401,10 +402,10 @@ function posterCopyBlock() {
 }
 
 function staticInvariantChecks() {
-  const ts = readSafe(path.join(BRIEF_DIR, 'brief.ts'));
-  const wxml = readSafe(path.join(BRIEF_DIR, 'brief.wxml'));
-  const wxss = readSafe(path.join(BRIEF_DIR, 'brief.wxss'));
-  const json = readSafe(path.join(BRIEF_DIR, 'brief.json'));
+  const ts = readPageBundle('brief', 'ts');
+  const wxml = readPageBundle('brief', 'wxml');
+  const wxss = readPageBundle('brief', 'wxss');
+  const json = readPageBundle('brief', 'json');
   const posterSrc = readSafe(POSTER_TS);
   const posterCopy = posterCopyBlock();
 

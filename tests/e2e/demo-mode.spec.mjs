@@ -37,6 +37,7 @@ import {
   section,
   delay,
   readSafe,
+  readPageBundle,
   withTimeout,
   hasPngMagic,
   sha256,
@@ -45,9 +46,9 @@ import {
 const AI_ROUTE = 'pages/ai/ai';
 const MINIAPP_ROOT = CONFIG.projectPath;
 const AI_DIR = path.join(MINIAPP_ROOT, 'pages', 'ai');
-const SETTINGS_DIR = path.join(MINIAPP_ROOT, 'pages', 'settings');
 const TEXTS_TS = path.join(MINIAPP_ROOT, 'config', 'texts.ts');
 const DEMO_TS = path.join(MINIAPP_ROOT, 'shared', 'services', 'demoAi.ts');
+const AI_RENDER_TS = path.join(MINIAPP_ROOT, 'shared', 'services', 'aiRender.ts');
 const AI_TS = path.join(AI_DIR, 'ai.ts');
 
 const E2E_DIR = E2E_ARTIFACTS;
@@ -393,12 +394,13 @@ const KEY_TOKENS = ['apikey', 'api_key', 'bearer', 'secret', 'token', 'password'
 
 function staticInvariantChecks() {
   const demo = readSafe(DEMO_TS);
-  const aiTs = readSafe(AI_TS);
-  const aiWxml = readSafe(path.join(AI_DIR, 'ai.wxml'));
-  const aiWxss = readSafe(path.join(AI_DIR, 'ai.wxss'));
-  const settingsTs = readSafe(path.join(SETTINGS_DIR, 'settings.ts'));
-  const settingsWxml = readSafe(path.join(SETTINGS_DIR, 'settings.wxml'));
+  const aiTs = readPageBundle('ai', 'ts');
+  const aiWxml = readPageBundle('ai', 'wxml');
+  const aiWxss = readPageBundle('ai', 'wxss');
+  const settingsTs = readPageBundle('settings', 'ts');
+  const settingsWxml = readPageBundle('settings', 'wxml');
   const texts = readSafe(TEXTS_TS);
+  const aiRenderTs = readSafe(AI_RENDER_TS);
 
   const demoWx = /\bwx\s*\./.test(demo);
   const demoNetwork = /\b(request|fetch|XMLHttpRequest)\s*\(/.test(demo);
@@ -412,7 +414,10 @@ function staticInvariantChecks() {
     /from\s*['"]\.\.\/\.\.\/shared\/services\/demoAi['"]/.test(aiTs) &&
     /demoAsk\s*\(/.test(aiTs) &&
     /demoExtractMemory\s*\(/.test(aiTs);
-  const aiDemoState = /'demo'/.test(aiTs) && /DEMO\.statusDemo/.test(aiTs) && /previewDemoNotice/.test(aiTs);
+  // The demo->copy mapping was extracted out of the page into the render service
+  // (shared/services/aiRender.ts: statusTextFor returns DEMO.statusDemo); the page
+  // keeps the 'demo' status value + previewDemoNotice. All three conditions stay.
+  const aiDemoState = /'demo'/.test(aiTs) && /DEMO\.statusDemo/.test(aiRenderTs) && /previewDemoNotice/.test(aiTs);
   const aiPreviewField = /previewDemoNotice/.test(aiWxml);
   const aiStatusVar = /statusbar--demo|statusbar--\{\{aiStatus\}\}/.test(aiWxml) && /statusbar--demo/.test(aiWxss);
   const aiForbidden = FORBIDDEN_STRINGS.filter((t) => (demo + aiTs + aiWxml + aiWxss).includes(t));

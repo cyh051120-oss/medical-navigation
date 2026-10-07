@@ -7,7 +7,7 @@
 // wave): bootstrap's assertions (app.json pages[0] === pages/home/home,
 // currentPage.path === pages[0], live render with pageStack + PNG magic + >5000B)
 // are all covered here, and this spec additionally checks the window title, the
-// full 8-page sequence and per-route navigation. bootstrap's one unique assertion
+// full 9-page sequence and per-route navigation. bootstrap's one unique assertion
 // — that the render's top page path equals pages[0] — is merged into the render
 // check below.
 //
@@ -35,6 +35,7 @@ import {
 
 const EXPECTED_TITLE = '就医准备助手';
 const EXPECTED_PAGES = [
+  'pages/workspace/workspace',
   'pages/home/home',
   'pages/profile/profile',
   'pages/symptoms/symptoms',
@@ -66,7 +67,7 @@ async function main() {
     fail(`title mismatch: expected "${EXPECTED_TITLE}" but app.json has "${observedTitle}"`);
   }
   if (pagesMatch) {
-    ok(`app.json pages === expected 8-page shell`);
+    ok(`app.json pages === expected 9-page shell`);
   } else {
     fail(`pages mismatch: expected [${expectedPages.join(', ')}] but app.json has [${pages.join(', ')}]`);
   }
@@ -97,7 +98,7 @@ async function main() {
   try {
     miniProgram = await launchMiniProgram();
 
-    // Home is the launch page (pages[0]); record it without navigating.
+    // Workspace is the launch page (pages[0]); record it without navigating.
     const home = expectedPages[0];
     const initial = await miniProgram.currentPage();
     const initialPath = initial ? initial.path : null;

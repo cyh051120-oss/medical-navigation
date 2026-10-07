@@ -34,7 +34,7 @@ import {
   section,
   delay,
   md5,
-  readSafe,
+  readPageBundle,
   makeCaptureScreenshot,
 } from './helpers.mjs';
 
@@ -368,10 +368,10 @@ const FORBIDDEN_STRINGS = [
 const SEVERITY_TOKENS = ['severity', '严重程度', '严重度', '危急程度'];
 
 function staticInvariantChecks() {
-  const ts = readSafe(path.join(QUESTIONS_DIR, 'questions.ts'));
-  const wxml = readSafe(path.join(QUESTIONS_DIR, 'questions.wxml'));
-  const wxss = readSafe(path.join(QUESTIONS_DIR, 'questions.wxss'));
-  const json = readSafe(path.join(QUESTIONS_DIR, 'questions.json'));
+  const ts = readPageBundle('questions', 'ts');
+  const wxml = readPageBundle('questions', 'wxml');
+  const wxss = readPageBundle('questions', 'wxss');
+  const json = readPageBundle('questions', 'json');
   const combined = [ts, wxml, wxss, json].join('\n');
 
   const forbidden = FORBIDDEN_STRINGS.filter((term) => combined.includes(term));
