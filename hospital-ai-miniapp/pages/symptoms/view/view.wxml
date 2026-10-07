@@ -1,0 +1,5 @@
+<!-- pages/symptoms/view/view.wxml — symptoms section 组件根。
+     根 class 保持原页面 .symptoms；is-hc 由 highContrast 属性驱动；主体复用共享 body。 -->
+<view class="symptoms {{highContrast ? 'is-hc' : ''}}">
+  <include src="./body.wxml"/>
+</view>
