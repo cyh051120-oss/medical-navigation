@@ -1,0 +1,6 @@
+<!-- pages/settings/view/view.wxml — settings section 组件根。
+     根 class 保持原页面 .settings；is-hc 由 highContrast 属性驱动；主体复用共享 body。
+     settings 是唯一保留内联 scale 变量的 section（拖动字号时经自身 data.scale 实时预览）。 -->
+<view class="settings {{highContrast ? 'is-hc' : ''}}" style="--mhp-scale: {{scale}}; --mhp-layout-scale: {{layoutScale}}">
+  <include src="./body.wxml"/>
+</view>

@@ -1,0 +1,2 @@
+/* pages/settings/view/view.wxss — 组件样式入口：主体样式全部来自共享 body.wxss。 */
+@import "./body.wxss";
