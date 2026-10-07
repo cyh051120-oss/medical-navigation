@@ -1,6 +1,6 @@
 # 软著申报提交清单与整改记录
 
-配套计划：`~/.commandcode/plans/soft-copyright-readiness-and-docs-plan.md`
+配套计划：工作区本地规划目录 `.omo/plans/`（仓库外，不随提交物分发）
 软件全称与版本：**就医准备助手 V1.0**
 
 ---
@@ -29,7 +29,7 @@
 
 | 编号 | 事项 | 说明 |
 | --- | --- | --- |
-| **A4** | **打包边界** | 只取项目根目录 `medical-navigation/`。**不要**打包其父目录：父目录含 `.commandcode/taste/taste.md`（行为画像笔记）与游离的 `project.config.json` |
+| **A4** | **打包边界** | 只取项目根目录 `medical-navigation/`。**不要**打包其父目录：父目录含工作区本地目录 `.audit/`（本地证据）与 `.omo/`（本地规划），均不入发布物 |
 | **A5** | **历史凭证吊销** | 按 `docs/SECURITY-REVOKE.md` 的「用户必须执行」一节到控制台吊销：火山引擎方舟 API Key、两个推理接入点、百度智能云 ASR 的 AK/SK。**从仓库移除 ≠ 吊销**，且仓库已被推送到公开远端 |
 | **B2** | **AppID 口径确认** | 源码现为 `touristappid`（测试号，`hospital-ai-miniapp/project.config.json: appid`）；证据文件保留历史值 `wxd3658bde1dabe949`。请确认申报材料以哪个口径为准（软著登记本身不要求 AppID） |
 | **B4** | **测试期 key 轮换** | 联调时贴入对话的那个 Command Code API key 建议吊销重建；新 key 只填在**仓库外**的 `%USERPROFILE%\.medical-prep\config.local.json`（经 `MHP_CONFIG_PATH` 注入，见第九节）；`server/config.json` 保持空 key 模板 |
@@ -73,7 +73,7 @@ grep -n '"apiKey"' server/config.json
 # 4) 版本一致性（期望：1.0.0）
 grep -n '"version"' package.json
 
-# 5) 重新导出源码材料（改动产品源码后需重跑；期望：73 文件 / 15,799 行 / 319 页）
+# 5) 重新导出源码材料（改动产品源码后需重跑；文件/行/页数以重生成后的 artifacts/soft-copyright/source-material.json 为准）
 node scripts/export-source-material.mjs
 ```
 
@@ -84,15 +84,15 @@ node scripts/export-source-material.mjs
 | 材料 | 来源 | 状态 |
 | --- | --- | --- |
 | 软件著作权登记申请表 | 中国版权保护中心在线填报 | 待你填报 |
-| 源程序（前 30 页 + 后 30 页，连续，每页 ≥50 行） | 已导出：`artifacts/soft-copyright/source-listing-60pages.txt`（前 30 + 后 30 页）；全量清单 `source-listing.txt`（73 文件 / 15,799 行 / 319 页）。打印成 PDF 即可提交 | **已导出** |
-| 软件说明书（操作手册） | `docs/USER-MANUAL.md`（含 18 张界面截图） | **已完成** |
+| 源程序（前 30 页 + 后 30 页，连续，每页 ≥50 行） | `artifacts/soft-copyright/source-listing-60pages.txt`（前 30 + 后 30 页）与全量 `source-listing.txt`（135 文件 / 19,551 行 / 397 页，见 `source-material.json`）。打印成 PDF 即可提交 | **已重生成**（2026-10-07） |
+| 软件说明书（操作手册） | `docs/USER-MANUAL.md`（含界面截图；张数以手册内为准） | **已完成** |
 | 项目开发计划书 | `docs/PROJECT-PLAN.md` | **已完成** |
 | 功能清单 | `docs/FEATURE-LIST.md` | 已有 |
 | 演示脚本 | `docs/DEMO-SCRIPT.md` | 已有 |
 | 来源与合规说明 | `docs/SOURCES.md` | 已有 |
 | 版本记录 | `CHANGELOG.md` | 新增 |
 | 第三方许可声明 | `THIRD-PARTY-NOTICES.md` | 新增 |
-| 软件运行图样 | `artifacts/screenshots/soft-copyright/`（18 张，含 SHA256 与双跑一致性） | 已有 |
+| 软件运行图样 | `artifacts/screenshots/soft-copyright/`（22 张，含新增 workspace 条目；`artifacts/screenshots/index.json` 记录 SHA256 与双跑逐张一致） | **已重生成**（2026-10-07） |
 | 申请人身份证明 | 申请人 | 待你提供 |
 
 ---
@@ -131,7 +131,7 @@ AI 助手新增第三张模式卡「问诊引导」：先说一段情况 → AI 
 改为「记录 / 整理与带走 / 设置」三组 7 项（AI 各模式合并为「AI 助手」）；空态补上
 「记一条症状」按钮并改写文案（原文案让用户「点击下方按钮」，而那个卡片里没有按钮）。
 
-诊断报告见 `.commandcode/design/review-report.md`（工作区根目录，不在提交边界内）。
+诊断报告为工作区本地产物（仓库外，不在提交边界内，未随仓库分发）。
 
 **代码状态**：`npm run typecheck` exit 0；`npm run test:scan` 的 bans / secrets / json / syntax 全 0。
 
@@ -249,6 +249,26 @@ devtools automation endpoint ws://127.0.0.1:9420 never came up within 90000ms
 - 契约更新：`tests/e2e/demo-mode.spec.mjs` 原断言「demoMode never overrides aiEnabled=false」改为新契约 `demo-standalone-ai-disabled`（demo 在 `aiEnabled=false` 下仍出固定结果且 `wx.request === 0`）；失败日志与说明同步。
 - 本机验证（无 DevTools，用真实 `ai.ts` + wx shim 的 node/tsx harness 驱动页面方法）：演示单开关 organize / consult 均出结果、**零 `wx.request`、零同意弹窗**；回归：demo 关 + AI 开 → 走真实请求；demo 关 + AI 关 → disabled 且零请求。`npm run typecheck` / `test:scan` / `test:all` 全绿。
 - **仍需人工**：`tests/e2e/demo-mode.spec.mjs` 的运行时层（层 2，依赖微信开发者工具）需在 DevTools 内重跑确认。
+
+---
+
+## 十、功能改动「单页工作台（Workspace）」对材料的影响（2026-10-07）
+
+小程序启动改为**单页工作台（workspace）**：`app.json` 第 1 页为 `pages/workspace/workspace`（共 9 页），
+侧栏在单页内以内存切换承载 8 个功能区（不重建页面、无整页导航动画，各功能区独立保留滚动位置，
+系统导航栏标题随之更新）；8 个原路由页保留为可直接打开的页面（深链/兼容），行为与视觉不变。
+本次改动**不涉及存储键 / Schema、用户可见文案与视觉**，e2e 仍为 15 个 spec。
+
+### 材料影响（本次工作台重构）
+
+| 材料 | 影响 | 处理 |
+| --- | --- | --- |
+| 本清单、`docs/PROJECT-PLAN.md`、`docs/A11Y-DECISION.md`、根 `README.md`、`hospital-ai-miniapp/README.md`、`CHANGELOG.md` | 导航/入口与缩放面描述改为单页工作台模型 | **已同步** |
+| `tests/e2e/screenshots.mjs`、`tests/e2e/screenshots-soft.mjs` | 截图工具新增 workspace 条目，截图集构成变化 | 已于 2026-10-07 重跑 `npm run screenshots:soft`（双跑）重新生成 |
+| `artifacts/screenshots/index.json` | 截图集新增 workspace 条目，`shots` / `hash_pairs` / `determinism` 随之变化 | **已重生成**（2026-10-07；本机产物，不入库） |
+| `artifacts/soft-copyright/source-material.json`（及 `source-listing*.txt`） | 源码新增 workspace 与各 `view/` 目录，文件数/行数/页数变化 | 已于 2026-10-07 重跑 `node scripts/export-source-material.mjs`（135 文件 / 19,551 行 / 397 页） |
+
+上述截图与源码材料**已于 2026-10-07 重生成**：截图 22 张（含 workspace 条目，双跑逐张字节一致）；源码材料 135 文件 / 19,551 行 / 397 页；以重生成后的 `index.json` / `source-material.json` 为准。
 
 ---
 

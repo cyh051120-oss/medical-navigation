@@ -65,9 +65,10 @@ npm run screenshots:soft  # 软著登记用确定性截图集（需要微信开�
 申请软件著作权需要可复现的演示材料。小程序在开发环境下提供「演示模式」：开启后 AI 输出
 为本地固定内容，同一输入永远得到同一份结果，且全程不发任何网络请求。
 
-- `npm run screenshots`：常规截图集（8 个页面、大字对比等），并对大字长文本做 OCR 溢出探针
-  （探针需 `MHP_OCR_SHOT` 指向 OCR helper；未提供时该探针如实失败退出，不伪造通过）。
-- `npm run screenshots:soft`：软著登记用的确定性截图集（18 张，同一输入两次冷启动逐张字节一致），
+- `npm run screenshots`：常规截图集（8 个路由页 + workspace 单页工作台、大字对比等），并对大字长文本
+  做 OCR 溢出探针（探针需 `MHP_OCR_SHOT` 指向 OCR helper；未提供时该探针如实失败退出，不伪造通过）。
+- `npm run screenshots:soft`：软著登记用的确定性截图集（含新增 workspace 条目；张数以重生成后的
+  `artifacts/screenshots/index.json` 为准，同一输入两次冷启动逐张字节一致），
   等价于 `node tests/e2e/screenshots-soft.mjs`。
 
 两条命令都需要微信开发者工具。登记材料取确定性那一套，内容确定、可重复。截图与索引是

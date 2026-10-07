@@ -7,7 +7,7 @@
 
 | 能力 | 状态 | 说明 |
 | --- | --- | --- |
-| 全局字号缩放（14–32） | 已实现 | 8 个页面随 `AppPreferences.fontSize` 缩放 |
+| 全局字号缩放（14–32） | 已实现 | 由单页工作台（workspace）宿主统一持有并下发到 8 个功能区；8 个路由页各自根节点绑定不变 |
 | 高对比模式 | 已实现 | `AppPreferences.highContrast` 一键切换 |
 | 语音输入提示（零权限） | 已实现 | 仅文案提示，不申请麦克风权限 |
 | 朗读（TTS） | **不实现**（决策） | 见 §3 |
@@ -15,12 +15,15 @@
 ## 2. 字号缩放与高对比机制
 
 - **单一机制**：`hospital-ai-miniapp/shared/ui/a11y.ts` 从 `records.preferences` 读取
-  `fontSize` / `highContrast`。7 个页面（home/profile/symptoms/notes/questions/brief/ai）
-  在 `onShow()` 调用 `syncA11y(this)` 写入本页 `data`；设置页（settings）需即时预览滑条，
-  自行内联计算 `scale = fontSize / 14`，不调用该 helper（`pages/settings/settings.ts`）。
-- **页面消费**：8 个页面（home/profile/symptoms/notes/questions/brief/ai/settings）的根节点
-  统一写 `style="--mhp-scale: {{scale}}"`（`scale = fontSize / 14`，14 → 1、32 → 32/14），
-  高对比再叠加 `is-hc` 类。
+  `fontSize` / `highContrast`。单页工作台宿主（`pages/workspace/workspace.ts`）在 `onShow()`
+  调用 `syncA11y(this)`，持有 `--mhp-scale` 并覆盖当前激活的 section；8 个路由页分别在其
+  `onShow()` 调用 `syncA11y(this)` 写入本页 `data`（wrapper 行为与重构前一致）。设置页
+  （settings）需即时预览滑条，自行内联计算 `scale = fontSize / 14`，不调用该 helper
+  （`pages/settings/settings.ts`）。
+- **页面消费**：单页工作台（workspace）根节点与 8 个路由页（home/profile/symptoms/notes/
+  questions/brief/ai/settings）的根节点统一写 `style="--mhp-scale: {{scale}}"`（`scale =
+  fontSize / 14`，14 → 1、32 → 32/14），高对比再叠加 `is-hc` 类；workspace 宿主持有该变量并
+  下发到各 section，路由页根节点绑定与重构前一致。
 - **字号来源**：所有页面字号一律写成 `calc(Nrpx * var(--mhp-scale))`，**不写死 px**；
   `app.wxss` 只提供 `--mhp-scale` 默认值与设计令牌，不散落具体字号。
 - **高对比来源**：`app.wxss` 定义全局 `.is-hc` 变量映射（把语义令牌指向 `--mhp-hc-*`），

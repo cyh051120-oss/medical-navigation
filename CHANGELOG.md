@@ -3,6 +3,30 @@
 本文件记录「就医准备助手」的版本变更。版本号与 `package.json` 的 `version` 对应；
 小程序「设置 → 关于」显示与之对应的文案「版本 1.0 · 本地优先」。
 
+## [未发布] — 单页工作台（Workspace）导航重构（2026-10-07）
+
+### 变更 · 微信小程序（`hospital-ai-miniapp/`）
+
+- **启动进入单页工作台**：新增 `pages/workspace/workspace` 作为 `app.json` 的启动页（共 9 页），
+  启动后即进入工作台，默认展示工作台（home）功能区。
+- **内存切换功能区**：左侧导航在单页内切换 8 个功能区，不重建页面、无整页导航动画；
+  各功能区独立保留滚动位置，系统导航栏标题随当前功能区更新。
+- **全局无障碍**：字号 14–32 与高对比由工作台宿主统一持有，切换功能区与修改设置后即时生效。
+- **8 个路由页保留**：原 8 个路由页可直接打开（深链/兼容），行为与视觉不变，继续供 e2e、
+  截图与深链使用；e2e 仍为 15 个 spec。
+
+### 变更 · 文档与工程能力
+
+- 工程门禁新增 `scripts/check-workspace.mjs`（导航 ↔ `app.json` ↔ 标题 ↔ section 注册表一致性），
+  并入 `npm run test:all`。
+- 截图工具 `tests/e2e/screenshots.mjs`、`tests/e2e/screenshots-soft.mjs` 新增 workspace 条目；
+  `artifacts/screenshots/index.json` 与 `artifacts/soft-copyright/source-material.json`
+  已随本条目重生成（2026-10-07：截图 22 张双跑逐张一致；源码材料 135 文件 / 19,551 行 / 397 页）。
+- 同步更新 `docs/PROJECT-PLAN.md`、`docs/A11Y-DECISION.md`、`docs/SUBMISSION-CHECKLIST.md`、
+  根 `README.md` 与 `hospital-ai-miniapp/README.md`。
+
+---
+
 ## [1.0.0] — 首个发布版本
 
 ### 新增 · 微信小程序（`hospital-ai-miniapp/`）

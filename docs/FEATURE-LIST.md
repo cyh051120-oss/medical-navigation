@@ -7,8 +7,8 @@
 
 | 功能 | 说明 | 代码锚点 |
 | --- | --- | --- |
-| 全局左侧导航栏 | 可折叠侧边栏，列出全部 8 个页面并可一键切换；当前页高亮；收起 / 展开状态保存在本机偏好 | `hospital-ai-miniapp/components/app-sidebar/app-sidebar.ts`；`hospital-ai-miniapp/shared/ui/nav.ts` / `hospital-ai-miniapp/shared/ui/sidebar.ts` |
-| 工作台总览 | 按本机时间给出问候语与一句话产品定位，附本机日期；展示健康档案准备总览（完整度 + 进度条）、症状/资料/待问计数、最近记录与使用提示。功能入口改由全局左侧导航栏承载 | `hospital-ai-miniapp/pages/home/home.ts: refresh / greetingFor / todayLabelFor`；`hospital-ai-miniapp/config/texts.ts: HOME` |
+| 全局左侧导航栏与单页切换 | 可折叠侧边栏，列出全部 8 个页面；在单页工作台内点击即在页内切换页面（不跳转、不整页重建），各页滚动位置独立保持，系统导航栏标题随当前页更新；当前页高亮；收起 / 展开状态保存在本机偏好。8 个页面另保留可直接打开的独立路由 | `hospital-ai-miniapp/components/app-sidebar/app-sidebar.ts`（`mode: 'select'`）；`hospital-ai-miniapp/pages/workspace/workspace.ts: onSelect / switchSection / applyTitle`；`hospital-ai-miniapp/shared/ui/nav.ts` / `hospital-ai-miniapp/shared/ui/sidebar.ts` |
+| 工作台总览 | 按本机时间给出问候语与一句话产品定位，附本机日期；展示健康档案准备总览（完整度 + 进度条）、症状/资料/待问计数、最近记录与使用提示。功能入口改由全局左侧导航栏承载；工作台同时作为单页宿主，统一持有字号、高对比与系统导航栏标题，承载 8 个页面在页内切换 | `hospital-ai-miniapp/pages/home/home.ts: refresh / greetingFor / todayLabelFor`；`hospital-ai-miniapp/pages/workspace/workspace.ts: onSelect / applyTitle / onPrefsChanged`；`hospital-ai-miniapp/config/texts.ts: HOME` |
 | 个人档案（单例） | 称呼、年龄段、性别（可选）、过敏、长期用药、既往情况；本机保存与清除 | `hospital-ai-miniapp/shared/services/records.ts: profile`；`hospital-ai-miniapp/pages/profile/profile.ts: onSave / onClear` |
 | 症状时间线 | 按发生时间记录症状原话、持续时长、影响、标签与 1 个附件 | `hospital-ai-miniapp/shared/services/records.ts: symptoms`；`hospital-ai-miniapp/pages/symptoms/symptoms.ts: onSave` |
 | 资料摘录 | 记录资料名称、摘录、来源日期、备注与 1 个附件 | `hospital-ai-miniapp/shared/services/records.ts: notes`；`hospital-ai-miniapp/pages/notes/notes.ts: onSave` |
@@ -53,8 +53,8 @@
 
 | 功能 | 说明 | 代码锚点 |
 | --- | --- | --- |
-| 大字模式（全局 14–32） | 8 个页面随偏好连续缩放；字号由 `--mhp-scale` 统一驱动 | `hospital-ai-miniapp/shared/ui/a11y.ts: A11Y_DATA / syncA11y`（`readA11y` 为模块内部读取函数）；`hospital-ai-miniapp/pages/settings/settings.ts: onFontSizeChanging / onFontSizeChange` |
-| 高对比度 | 一键切换高对比配色，页面经 `is-hc` 类消费变量映射 | `hospital-ai-miniapp/pages/settings/settings.ts: onHighContrastChange`；`hospital-ai-miniapp/shared/ui/a11y.ts: readA11y`（模块内部读取函数） |
+| 大字模式（全局 14–32） | 单页工作台与 8 个路由页随偏好连续缩放；字号由 `--mhp-scale` 统一驱动；在工作台内切换页面即时生效、不丢失 | `hospital-ai-miniapp/shared/ui/a11y.ts: A11Y_DATA / syncA11y`（`readA11y` 为模块内部读取函数）；`hospital-ai-miniapp/pages/workspace/workspace.ts: refreshPrefs / onPrefsChanged`；`hospital-ai-miniapp/pages/settings/settings.ts: onFontSizeChanging / onFontSizeChange` |
+| 高对比度 | 一键切换高对比配色，单页工作台与各页面经 `is-hc` 类消费变量映射；工作台内切换页面即时生效 | `hospital-ai-miniapp/pages/settings/settings.ts: onHighContrastChange`；`hospital-ai-miniapp/pages/workspace/workspace.ts: syncNavColor / onPrefsChanged`；`hospital-ai-miniapp/shared/ui/a11y.ts: readA11y`（模块内部读取函数） |
 
 ## 五、工程检查能力
 

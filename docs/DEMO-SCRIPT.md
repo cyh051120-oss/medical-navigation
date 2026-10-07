@@ -1,11 +1,12 @@
 # 演示脚本（软件著作权登记用）
 
-本脚本给出「就医准备助手」微信小程序的可复现演示步骤。步骤顺序与小程序
-`hospital-ai-miniapp/app.json` 的 `pages` 数组一致：
+本脚本给出「就医准备助手」微信小程序的可复现演示步骤。小程序启动后直接进入单页「工作台」，
+左侧导航栏按以下功能顺序排列：
 
-home → profile → symptoms → notes → questions → brief → ai → settings
+工作台 → 个人档案 → 症状记录 → 资料摘录 → 待问清单 → 就医摘要 → AI 助手 → 设置
 
-共 8 个主步骤，每步包含「操作」与「预期结果」。全部界面文案与交互均对应仓库当前实现。
+共 8 个主步骤，每步包含「操作」与「预期结果」。全部步骤都在同一个工作台页内完成：
+点击左侧导航栏即在页内切换页面，不跳转、不整页重建。全部界面文案与交互均对应仓库当前实现。
 
 ## 演示环境与演示数据
 
@@ -27,7 +28,7 @@ home → profile → symptoms → notes → questions → brief → ai → setti
 
 ## 步骤 1：工作台（home）
 
-**操作**：打开小程序，进入首页「工作台」。
+**操作**：打开小程序，直接进入单页「工作台」（启动页）。
 
 **预期结果**：
 
@@ -42,7 +43,9 @@ home → profile → symptoms → notes → questions → brief → ai → setti
 - 「使用提示」卡片显示固定安全提示句与本地优先说明。
 - 页面左侧是**可折叠导航栏**（`components/app-sidebar`，全局注册于 `app.json`），列出全部 8 个页面：
   工作台、个人档案、症状记录、资料摘录、待问清单、就医摘要、AI 助手、设置；点底部「« / »」可收起为纯图标栏，
-  收起状态记入本机偏好（`AppPreferences.sidebarCollapsed`）。工作台自身不再重复列出功能入口。
+  收起状态记入本机偏好（`AppPreferences.sidebarCollapsed`）。点击任一页面项即在当前工作台页内切换，
+  不跳转、不整页重建，切走再切回时该页滚动位置保持，系统导航栏标题随当前页面更新；
+  字号与高对比等显示偏好由工作台统一持有，对各页面即时生效。工作台自身不再重复列出功能入口。
 
 ## 步骤 2：个人档案（profile）
 
@@ -150,9 +153,9 @@ home → profile → symptoms → notes → questions → brief → ai → setti
 
 **预期结果**：
 
-- **大字模式**：拖动「字号」滑条（14–32），页面文字立即缩放；退出后其他页面同样生效
+- **大字模式**：拖动「字号」滑条（14–32），页面文字立即缩放；切换页面后同样生效
   （`pages/settings/settings.ts: onFontSizeChanging / onFontSizeChange`；全局机制
-  `shared/ui/a11y.ts: syncA11y`，8 个页面根节点统一绑定 `--mhp-scale`）。
+  `shared/ui/a11y.ts: syncA11y`，单页工作台与 8 个路由页根节点统一绑定 `--mhp-scale`）。
 - **高对比度**：打开「高对比模式」开关，页面切换为高对比配色
   （`pages/settings/settings.ts: onHighContrastChange`；变量映射见 `app.wxss` 的 `.is-hc`，
   由 `shared/ui/a11y.ts: readA11y`（模块内部读取函数）读取偏好后写入）。

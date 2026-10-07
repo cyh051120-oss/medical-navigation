@@ -87,7 +87,7 @@
 | 不编造 | 上游不可用或校验不过时降级本地整理，并如实告知原因 | `pages/ai/ai.ts: handleSendResult / autoLocalSend` |
 | 确定性 | 同一输入同一结果，供演示与登记材料复现 | 演示模式 + 固定 fixtures；`artifacts/screenshots/index.json: determinism`（本机运行产物，不入库） |
 | 零运行时依赖 | 代理只用 Node 内置模块，无需构建 | `server/tsconfig.json`（可擦除语法约束）；`package.json` 无 `dependencies` |
-| 无障碍 | 字号 14–32 逐页生效；高对比配色 | `shared/ui/a11y.ts`；`app.wxss` 的 `.is-hc` |
+| 无障碍 | 字号 14–32 全局生效（workspace 宿主统一持有下发）；高对比配色 | `shared/ui/a11y.ts`；`app.wxss` 的 `.is-hc` |
 
 ---
 
@@ -98,7 +98,7 @@
 ```
 ┌─────────────────────────── 用户手机 ───────────────────────────┐
 │  微信小程序 hospital-ai-miniapp/                                │
-│  pages/ 8 页  ──►  shared/services/（records / organizer /       │
+│  pages/ 9 页  ──►  shared/services/（records / organizer /       │
 │                     brief / attachments / oplog / aiClient）     │
 │                              │                                   │
 │                     shared/utils/storage.ts（mhp_ 本机存储）     │
@@ -119,6 +119,11 @@
 │  config.json（用户自填模型与检索；不入库）                        │
 └──────────────────────────────────────────────────────────────────┘
 ```
+
+上图中「pages/」现为**单页工作台模型**：`pages/workspace/workspace` 作为启动页（`app.json`
+第 1 项，共 9 页），在单页内以内存切换承载 8 个功能区，不重建页面、无整页导航动画，各功能区
+独立保留滚动位置，系统导航栏标题随当前功能区更新；8 个原路由页保留为可直接打开的页面
+（深链/兼容），行为与视觉不变。
 
 ### 3.2 技术选型
 
@@ -145,6 +150,7 @@
 | 网络出口 | `shared/services/aiClient.ts` | 脱敏、构造发送载荷、生成预览、唯一 `wx.request` 调用点 |
 | 演示 | `shared/services/demoAi.ts` | 演示模式的本地固定输出 |
 | 无障碍 | `shared/ui/a11y.ts` | 字号缩放与高对比偏好读取与下发 |
+| 单页工作台 | `pages/workspace/workspace.*` | 启动页宿主：内存切换 8 个功能区，统一持有 a11y、侧栏、导航栏标题与分享 |
 | HTTP 装配 | `server/index.ts` | 路由、CORS、请求体上限、健康检查 |
 | 编排 | `server/orchestrator.ts` | `ask()`：资料整理 / 问诊建议两种模式编排 + 护栏 + 校验，绝不抛异常（问诊引导走独立路由 `interview()`） |
 | 提示词 | `server/prompts.ts` | 三种模式 system 提示、受控科室、上限常量 |
@@ -213,7 +219,8 @@
 
 ### 4.5 无障碍
 
-- 字号 14–32 连续可调，经 `--mhp-scale` 统一下发到 8 个页面的根节点，逐页生效。
+- 字号 14–32 连续可调，由单页工作台（workspace）宿主经 `--mhp-scale` 统一持有并下发到 8 个
+  功能区，切换与修改设置后即时生效；8 个路由页各自根节点绑定不变。
 - 高对比模式经 `.is-hc` 类切换配色变量。
 - 语音输入由系统键盘提供，工具本身**不申请麦克风权限**。
 
@@ -262,7 +269,7 @@
 | --- | --- | --- |
 | 静态扫描 | `scripts/static-scan.mjs`：能力禁令词、密钥形态、`app.json` 权限与实现一致性、JSON/语法检查 | `artifacts/scan/*` |
 | 逻辑与契约检查 | `scripts/check-*.mjs`：整理、摘要、配置、LLM、检索、编排、记忆提炼、演示矩阵 | `artifacts/checks/*.json` |
-| 端到端 | `tests/e2e/*.spec.mjs`（微信开发者工具自动化）：八个页面、AI 同意流、降级、无障碍、演示模式、脱敏 | `artifacts/e2e/*.json` |
+| 端到端 | `tests/e2e/*.spec.mjs`（微信开发者工具自动化）：单页工作台启动、八个路由页、AI 同意流、降级、无障碍、演示模式、脱敏 | `artifacts/e2e/*.json` |
 | 截图确定性 | `tests/e2e/screenshots-soft.mjs`：演示模式下两次冷启动逐张 SHA256 比对 | `artifacts/screenshots/index.json` |
 
 > 说明：上表「产出」列的 `artifacts/` 是**本机运行产物**目录，已被 `.gitignore` 忽略，
@@ -276,6 +283,7 @@ npm run typecheck     # 小程序 + 代理类型检查
 npm run test:scan     # 静态扫描
 npm run test:logic    # 本地整理与摘要逻辑
 npm run test:server   # 代理端契约检查
+npm run test:all      # 全量门禁（含 scripts/check-workspace.mjs：导航↔app.json↔标题↔section 一致性）
 npm run test:e2e      # 端到端（需微信开发者工具）
 npm run screenshots       # 常规截图 + 大字长文本 OCR 溢出探针（需微信开发者工具）
 npm run screenshots:soft  # 软著登记用确定性截图集（需微信开发者工具）
@@ -284,11 +292,11 @@ npm run screenshots:soft  # 软著登记用确定性截图集（需微信开发�
 ### 6.3 验收标准
 
 1. 上述门禁全部通过；
-2. 8 个页面均可正常渲染、无白屏与报错；
+2. 启动进入单页工作台（workspace，默认工作台功能区），侧栏 8 个功能区内存切换、无白屏；8 个路由页 reLaunch 均可正常渲染、无报错；
 3. AI 三种模式可用（资料整理 / 问诊建议 / 问诊引导）；资料整理不含医疗判断；问诊建议每条建议带权威来源，或无来源时显示
    「未找到权威资料，请向医生确认」；
 4. 外部 AI 关闭、代理不可用、输出未过校验三种情形均按设计降级，不编造内容；
-5. 18 张登记截图在两次冷启动下逐字节一致。
+5. 登记截图集（22 张，含新增 workspace 条目；见 `artifacts/screenshots/index.json`）在两次冷启动下逐字节一致。
 
 ---
 
@@ -311,7 +319,7 @@ npm run screenshots:soft  # 软著登记用确定性截图集（需微信开发�
 
 | 类别 | 内容 |
 | --- | --- |
-| 小程序源码 | `hospital-ai-miniapp/`（8 页面 + 共享服务/UI/工具 + 配置文案） |
+| 小程序源码 | `hospital-ai-miniapp/`（单页工作台 + 8 路由页 + 共享服务/UI/工具 + 配置文案） |
 | 代理源码 | `server/`（HTTP 层、编排、提示、校验、红标、权威域名、上游适配、记忆提炼、演示夹具） |
 | 工程工具 | `scripts/`（静态扫描与契约检查） |
 | 测试 | `tests/e2e/`（E2E 规格、截图引擎） |
@@ -329,7 +337,7 @@ npm run screenshots:soft  # 软著登记用确定性截图集（需微信开发�
 medical-navigation/
 ├── README.md                 项目总览与运行说明
 ├── package.json              统一命令入口
-├── hospital-ai-miniapp/      微信小程序（8 页面 + 共享模块）
+├── hospital-ai-miniapp/      微信小程序（单页工作台 + 8 路由页 + 共享模块）
 ├── server/                   本地 AI 代理（零运行时依赖）
 ├── scripts/                  静态扫描与契约检查
 ├── tests/e2e/                端到端测试与截图引擎
