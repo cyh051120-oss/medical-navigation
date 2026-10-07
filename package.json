@@ -13,7 +13,7 @@
     "test:server": "tsx scripts/check-server.mjs && tsx scripts/check-llm.mjs && tsx scripts/check-search.mjs && tsx scripts/check-ask.mjs && tsx scripts/check-extract.mjs && tsx scripts/check-interview.mjs && tsx scripts/check-demo.mjs && tsx scripts/check-matrix.mjs",
     "dev:api": "node server/index.ts",
     "dev:api:local": "node scripts/dev-api-local.mjs",
-    "test:all": "npm run test:scan && npm run test:logic && tsx scripts/check-aiclient.mjs && npm run test:server && tsx scripts/check-storage.mjs && tsx scripts/check-attachments.mjs && tsx scripts/check-memory.mjs",
+    "test:all": "npm run test:scan && npm run test:logic && tsx scripts/check-workspace.mjs && tsx scripts/check-aiclient.mjs && npm run test:server && tsx scripts/check-storage.mjs && tsx scripts/check-attachments.mjs && tsx scripts/check-memory.mjs",
     "test:e2e": "node tests/e2e/run.mjs",
     "screenshots": "node tests/e2e/screenshots.mjs",
     "screenshots:soft": "node tests/e2e/screenshots-soft.mjs"

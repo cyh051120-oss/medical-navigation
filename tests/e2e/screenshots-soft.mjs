@@ -83,6 +83,8 @@ const PAGES = [
   { name: 'brief', route: 'pages/brief/brief' },
   { name: 'ai', route: 'pages/ai/ai' },
   { name: 'settings', route: 'pages/settings/settings' },
+  { name: 'workspace', route: 'pages/workspace/workspace' },
+  { name: 'workspace-settings', route: 'pages/workspace/workspace?section=settings' },
 ];
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -133,6 +135,12 @@ async function pinGreeting(mp) {
       const pages = getCurrentPages();
       const page = pages[pages.length - 1];
       page.setData({ greeting });
+      // workspace hosts home as a child component (#sec-home) with its own data, so the
+      // host-page patch above does NOT reach it; pin the component too so the workspace
+      // capture matches the wrapper-home capture.
+      const secHome =
+        typeof page.selectComponent === 'function' ? page.selectComponent('#sec-home') : null;
+      if (secHome && typeof secHome.setData === 'function') secHome.setData({ greeting });
       return greeting;
     },
     8000,
@@ -242,14 +250,15 @@ async function screenshotTo(mp, file) {
 }
 
 /**
- * Home-only convergence capture (see the header note). Accepts the frame only after
- * HOME_STABLE_K consecutive byte-equal samples, each taken after an independent fresh
+ * Home-section-bearing convergence capture (see the header note). Accepts the frame only
+ * after HOME_STABLE_K consecutive byte-equal samples, each taken after an independent fresh
  * re-render (reLaunch + greeting re-pin re-runs onShow/refresh). An isolated raster flip
  * cannot form a run, so this converges to the canonical frame; the accepted PNG is written
  * to `file`. The render is already in its canonical state when this is first called — the
- * caller does goto(home) + pinGreeting() beforehand.
+ * caller does goto(route) + pinGreeting() beforehand. `route` (default the wrapper home page)
+ * lets the same convergence guard run for the workspace SPA's home section.
  */
-async function captureHomeStable(mp, file, name) {
+async function captureHomeStable(mp, file, name, route = 'pages/home/home') {
   ensureDir(SCRATCH_DIR);
   const scratch = path.join(SCRATCH_DIR, `${name}.png`);
   let prev = null;
@@ -269,7 +278,7 @@ async function captureHomeStable(mp, file, name) {
       return;
     }
     // Independent render for the next sample; reLaunch re-runs onShow -> refresh.
-    await goto(mp, 'pages/home/home', 1000);
+    await goto(mp, route, 1000);
     await pinGreeting(mp);
   }
   throw new Error(
@@ -280,8 +289,8 @@ async function captureHomeStable(mp, file, name) {
 async function capture(mp, name, meta) {
   const file = path.join(OUT_DIR, `${name}.png`);
   ensureDir(OUT_DIR);
-  if (meta && meta.page === 'home') {
-    await captureHomeStable(mp, file, name);
+  if (meta && (meta.page === 'home' || meta.page === 'workspace')) {
+    await captureHomeStable(mp, file, name, meta.route);
   } else {
     await mp.screenshot({ path: file });
   }
@@ -329,7 +338,7 @@ async function main() {
       await resetAndSeed(mp, fontSize);
       for (const page of PAGES) {
         await goto(mp, page.route, 1000);
-        if (page.name === 'home') await pinGreeting(mp);
+        if (page.name === 'home' || page.name === 'workspace') await pinGreeting(mp);
         if (page.name === 'ai') {
           drivers[`organize_${fontSize}`] = await driveOrganize(mp);
           await scrollToBottom(mp);
