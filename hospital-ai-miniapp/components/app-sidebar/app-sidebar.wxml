@@ -8,7 +8,10 @@
     <text class="sb__brand-text" wx:if="{{!collapsed}}">就医准备</text>
   </view>
 
-  <scroll-view class="sb__nav" scroll-y>
+  <!-- enhanced + show-scrollbar=false：base lib 2.12.0+ 的官方隐藏滚动条开关（仅垂直生效）；
+       bounces 默认 true 且仅 enhanced 下生效，显式关掉以保留此前非 enhanced 的滚动手感。
+       旧基础库由 app-sidebar.wxss 的 ::-webkit-scrollbar 兜底；滚动本身不受影响。 -->
+  <scroll-view class="sb__nav" scroll-y enhanced="{{true}}" show-scrollbar="{{false}}" bounces="{{false}}">
     <view
       class="sb__item {{item.key === current ? 'is-active' : ''}}"
       wx:for="{{items}}"

@@ -1,0 +1,13 @@
+{
+  "navigationBarTitleText": "工作台",
+  "usingComponents": {
+    "home-view": "/pages/home/view/view",
+    "profile-view": "/pages/profile/view/view",
+    "notes-view": "/pages/notes/view/view",
+    "questions-view": "/pages/questions/view/view",
+    "symptoms-view": "/pages/symptoms/view/view",
+    "brief-view": "/pages/brief/view/view",
+    "ai-view": "/pages/ai/view/view",
+    "settings-view": "/pages/settings/view/view"
+  }
+}

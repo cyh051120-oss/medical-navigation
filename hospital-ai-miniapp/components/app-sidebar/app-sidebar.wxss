@@ -71,6 +71,16 @@
   padding: var(--mhp-space-5) var(--mhp-space-4);
 }
 
+/* 滚动条隐藏兜底（旧基础库 / 开发者工具无 enhanced 支持时）：wxml 的
+   enhanced + show-scrollbar 是官方首选，这里仅加 ::-webkit-scrollbar 兜底；
+   只隐藏视觉滚动条，不改变 .sb__nav 的高度/flex，纵向滚动照常工作。 */
+.sb__nav::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+  color: transparent;
+}
+
 .sb__item {
   display: flex;
   align-items: center;

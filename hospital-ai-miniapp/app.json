@@ -1,5 +1,6 @@
 {
   "pages": [
+    "pages/workspace/workspace",
     "pages/home/home",
     "pages/profile/profile",
     "pages/symptoms/symptoms",

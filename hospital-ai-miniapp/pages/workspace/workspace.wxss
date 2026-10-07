@@ -1,0 +1,21 @@
+/* pages/workspace/workspace.wxss — 单页工作台宿主壳（P1）。
+   固定高舞台 + 绝对定位 pane；页面高度由 app.wxss 的 page { height: 100% } 提供。
+   宽度让位（.app-shell 的 margin-left）与缩放变量沿用既有契约，不新增视觉值。 */
+
+.ws {
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.ws__stage {
+  height: 100%;
+  position: relative;
+}
+
+.ws__pane {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+}

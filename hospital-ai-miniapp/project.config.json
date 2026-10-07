@@ -36,7 +36,7 @@
   },
   "compileType": "miniprogram",
   "libVersion": "3.15.1",
-  "appid": "touristappid",
+  "appid": "wxf55c9fe4bc57f99b",
   "projectname": "hospital-ai-miniapp",
   "condition": {
     "search": {
@@ -56,6 +56,11 @@
         {
           "name": "home",
           "pathName": "pages/home/home",
+          "query": ""
+        },
+        {
+          "name": "workspace",
+          "pathName": "pages/workspace/workspace",
           "query": ""
         }
       ]
