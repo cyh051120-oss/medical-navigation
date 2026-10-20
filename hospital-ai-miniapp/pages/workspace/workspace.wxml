@@ -1,96 +1,114 @@
-<!-- pages/workspace/workspace.wxml — 单页工作台（workspace SPA）宿主页（P1）。
-     根壳承接 a11y/sidebar 状态；侧栏 mode="select" 派发 select 事件；舞台承载各 section pane。
-     section 用 scroll-view 承担滚动（固定高舞台 + 绝对定位铺满 + display 切换保活）。
-     8 个功能区均为 section（mounted 懒挂载）；侧栏 select 与 section 内导航全部走内存切换。 -->
-<view class="ws app-shell {{highContrast ? 'is-hc' : ''}} {{sidebarCollapsed ? 'is-collapsed' : ''}}" style="--mhp-scale: {{scale}}; --mhp-layout-scale: {{layoutScale}}">
-  <app-sidebar
-    current="{{active}}"
-    collapsed="{{sidebarCollapsed}}"
-    scale="{{scale}}"
-    mode="select"
-    bind:toggle="onSidebarToggle"
-    bind:select="onSelect"
-  />
-
+<!-- 手机工作台：五个主入口，记录/我的按真实功能区划分次级入口。保留所有 section 的 mounted 与滚动位置。 -->
+<view class="ws {{highContrast ? 'is-hc' : ''}} {{scale >= 1.5 ? 'is-large-text' : ''}}" style="--mhp-scale: {{scale}}; --mhp-layout-scale: {{layoutScale}}">
   <view class="ws__stage">
-    <scroll-view
-      wx:if="{{mounted.home}}"
-      class="ws__pane"
-      scroll-y
-      enhanced="{{true}}"
-      style="display: {{active === 'home' ? 'block' : 'none'}}"
-    >
-      <home-view id="sec-home" high-contrast="{{highContrast}}" bind:navigate="onSectionNavigate" />
-    </scroll-view>
+    <view class="ws__subnav" wx:if="{{activeTab === 'records' || activeTab === 'mine'}}" aria-role="tablist" aria-label="{{activeTab === 'records' ? '记录分类' : '个人区域分类'}}">
+      <view
+        class="ws__subtab {{active === item.key ? 'is-active' : ''}}"
+        wx:for="{{activeTab === 'records' ? recordSections : mineSections}}"
+        wx:key="key"
+        data-section="{{item.key}}"
+        bindtap="onSubtabSelect"
+        aria-role="tab"
+        aria-selected="{{active === item.key}}"
+        aria-label="{{item.label}}"
+      >{{item.label}}</view>
+    </view>
+    <view class="ws__content">
+      <scroll-view
+        wx:if="{{mounted.home}}"
+        class="ws__pane"
+        scroll-y
+        enhanced="{{true}}"
+        style="display: {{active === 'home' ? 'block' : 'none'}}"
+      >
+        <home-view id="sec-home" high-contrast="{{highContrast}}" bind:navigate="onSectionNavigate" />
+      </scroll-view>
 
-    <scroll-view
-      wx:if="{{mounted.profile}}"
-      class="ws__pane"
-      scroll-y
-      enhanced="{{true}}"
-      style="display: {{active === 'profile' ? 'block' : 'none'}}"
-    >
-      <profile-view id="sec-profile" high-contrast="{{highContrast}}" bind:navigate="onSectionNavigate" />
-    </scroll-view>
+      <scroll-view
+        wx:if="{{mounted.profile}}"
+        class="ws__pane"
+        scroll-y
+        enhanced="{{true}}"
+        style="display: {{active === 'profile' ? 'block' : 'none'}}"
+      >
+        <profile-view id="sec-profile" high-contrast="{{highContrast}}" bind:navigate="onSectionNavigate" />
+      </scroll-view>
 
-    <scroll-view
-      wx:if="{{mounted.notes}}"
-      class="ws__pane"
-      scroll-y
-      enhanced="{{true}}"
-      style="display: {{active === 'notes' ? 'block' : 'none'}}"
-    >
-      <notes-view id="sec-notes" high-contrast="{{highContrast}}" bind:navigate="onSectionNavigate" />
-    </scroll-view>
+      <scroll-view
+        wx:if="{{mounted.notes}}"
+        class="ws__pane"
+        scroll-y
+        enhanced="{{true}}"
+        style="display: {{active === 'notes' ? 'block' : 'none'}}"
+      >
+        <notes-view id="sec-notes" high-contrast="{{highContrast}}" bind:navigate="onSectionNavigate" />
+      </scroll-view>
 
-    <scroll-view
-      wx:if="{{mounted.questions}}"
-      class="ws__pane"
-      scroll-y
-      enhanced="{{true}}"
-      style="display: {{active === 'questions' ? 'block' : 'none'}}"
-    >
-      <questions-view id="sec-questions" high-contrast="{{highContrast}}" bind:navigate="onSectionNavigate" />
-    </scroll-view>
+      <scroll-view
+        wx:if="{{mounted.questions}}"
+        class="ws__pane"
+        scroll-y
+        enhanced="{{true}}"
+        style="display: {{active === 'questions' ? 'block' : 'none'}}"
+      >
+        <questions-view id="sec-questions" high-contrast="{{highContrast}}" bind:navigate="onSectionNavigate" />
+      </scroll-view>
 
-    <scroll-view
-      wx:if="{{mounted.symptoms}}"
-      class="ws__pane"
-      scroll-y
-      enhanced="{{true}}"
-      style="display: {{active === 'symptoms' ? 'block' : 'none'}}"
-    >
-      <symptoms-view id="sec-symptoms" high-contrast="{{highContrast}}" bind:navigate="onSectionNavigate" />
-    </scroll-view>
+      <scroll-view
+        wx:if="{{mounted.symptoms}}"
+        class="ws__pane"
+        scroll-y
+        enhanced="{{true}}"
+        style="display: {{active === 'symptoms' ? 'block' : 'none'}}"
+      >
+        <symptoms-view id="sec-symptoms" high-contrast="{{highContrast}}" bind:navigate="onSectionNavigate" />
+      </scroll-view>
 
-    <scroll-view
-      wx:if="{{mounted.brief}}"
-      class="ws__pane"
-      scroll-y
-      enhanced="{{true}}"
-      style="display: {{active === 'brief' ? 'block' : 'none'}}"
-    >
-      <brief-view id="sec-brief" high-contrast="{{highContrast}}" bind:navigate="onSectionNavigate" />
-    </scroll-view>
+      <scroll-view
+        wx:if="{{mounted.brief}}"
+        class="ws__pane"
+        scroll-y
+        enhanced="{{true}}"
+        style="display: {{active === 'brief' ? 'block' : 'none'}}"
+      >
+        <brief-view id="sec-brief" high-contrast="{{highContrast}}" bind:navigate="onSectionNavigate" />
+      </scroll-view>
 
-    <scroll-view
-      wx:if="{{mounted.ai}}"
-      class="ws__pane"
-      scroll-y
-      enhanced="{{true}}"
-      style="display: {{active === 'ai' ? 'block' : 'none'}}"
-    >
-      <ai-view id="sec-ai" entry-mode="{{aiMode}}" high-contrast="{{highContrast}}" bind:navigate="onSectionNavigate" />
-    </scroll-view>
+      <scroll-view
+        wx:if="{{mounted.ai}}"
+        class="ws__pane"
+        scroll-y
+        enhanced="{{true}}"
+        style="display: {{active === 'ai' ? 'block' : 'none'}}"
+      >
+        <ai-view id="sec-ai" entry-mode="{{aiMode}}" high-contrast="{{highContrast}}" bind:navigate="onSectionNavigate" />
+      </scroll-view>
 
-    <scroll-view
-      wx:if="{{mounted.settings}}"
-      class="ws__pane"
-      scroll-y
-      enhanced="{{true}}"
-      style="display: {{active === 'settings' ? 'block' : 'none'}}"
+      <scroll-view
+        wx:if="{{mounted.settings}}"
+        class="ws__pane"
+        scroll-y
+        enhanced="{{true}}"
+        style="display: {{active === 'settings' ? 'block' : 'none'}}"
+      >
+        <settings-view id="sec-settings" high-contrast="{{highContrast}}" bind:navigate="onSectionNavigate" bind:prefs-changed="onPrefsChanged" />
+      </scroll-view>
+    </view>
+  </view>
+
+  <view class="ws__bottom-nav" aria-role="tablist" aria-label="主导航">
+    <view
+      class="ws__tab {{activeTab === item.key ? 'is-active' : ''}}"
+      wx:for="{{primaryTabs}}"
+      wx:key="key"
+      data-tab="{{item.key}}"
+      bindtap="onTabSelect"
+      aria-role="tab"
+      aria-selected="{{activeTab === item.key}}"
+      aria-label="{{item.key === 'ai' ? 'AI 助手' : item.label}}"
     >
-      <settings-view id="sec-settings" high-contrast="{{highContrast}}" bind:navigate="onSectionNavigate" bind:prefs-changed="onPrefsChanged" />
-    </scroll-view>
+      <view class="mhp-ico mhp-ico--{{item.icon}} ws__tab-icon"></view>
+      <text class="ws__tab-label">{{item.label}}</text>
+    </view>
   </view>
 </view>

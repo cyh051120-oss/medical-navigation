@@ -3,10 +3,11 @@
      根壳（.symptoms 的 class / inline scale 变量）与 <app-sidebar> 由宿主提供，不在此处。 -->
   <view class="hero">
     <view class="hero__text">
+      <view class="mhp-page-kicker"><view class="mhp-page-kicker__dot"></view><text>健康记录  /  01</text></view>
       <text class="hero__title">{{copy.title}}</text>
       <text class="hero__sub">{{copy.intro}}</text>
     </view>
-    <view class="hero__add" wx:if="{{!formOpen}}" bindtap="onAdd" aria-role="button" aria-label="{{buttons.add}}">{{buttons.add}}</view>
+    <view class="hero__add" wx:if="{{!formOpen}}" bindtap="onAdd" aria-role="button" aria-label="{{buttons.add}}"><text class="hero__add-plus">＋</text><text>{{buttons.add}}</text></view>
   </view>
 
   <view class="editor" wx:if="{{formOpen}}">
@@ -18,10 +19,10 @@
     <view class="field">
       <text class="field__label">{{copy.occurredLabel}}</text>
       <view class="field__pair">
-        <picker class="field__picker" mode="date" value="{{form.date}}" bindchange="onDateChange">
+        <picker class="field__picker" mode="date" value="{{form.date}}" bindchange="onDateChange" aria-label="症状发生日期">
           <view class="picker">{{form.date || copy.datePlaceholder}}</view>
         </picker>
-        <picker class="field__picker" mode="time" value="{{form.time}}" bindchange="onTimeChange">
+        <picker class="field__picker" mode="time" value="{{form.time}}" bindchange="onTimeChange" aria-label="症状发生时间">
           <view class="picker">{{form.time || copy.timePlaceholder}}</view>
         </picker>
       </view>
@@ -33,8 +34,10 @@
         class="field__area"
         value="{{form.text}}"
         placeholder="{{copy.textPlaceholder}}"
+        placeholder-style="{{highContrast ? 'color:#FFFFFF' : 'color:#5A7068'}}"
         bindinput="onTextInput"
         maxlength="500"
+        aria-label="症状描述"
       />
     </view>
 
@@ -44,8 +47,10 @@
         class="field__input"
         value="{{form.duration}}"
         placeholder="{{copy.durationPlaceholder}}"
+        placeholder-class="mhp-placeholder"
         bindinput="onDurationInput"
         maxlength="40"
+        aria-label="持续时长"
       />
     </view>
 
@@ -55,8 +60,10 @@
         class="field__input"
         value="{{form.impact}}"
         placeholder="{{copy.impactPlaceholder}}"
+        placeholder-class="mhp-placeholder"
         bindinput="onImpactInput"
         maxlength="100"
+        aria-label="生活影响"
       />
     </view>
 
@@ -66,8 +73,10 @@
         class="field__input"
         value="{{form.tagsText}}"
         placeholder="{{copy.tagsPlaceholder}}"
+        placeholder-class="mhp-placeholder"
         bindinput="onTagsInput"
         maxlength="120"
+        aria-label="症状标签"
       />
     </view>
 
@@ -112,7 +121,7 @@
         </view>
         <view class="tl-card__stamp">
           <text class="tl-card__stamp-item">{{copy.createdAtPrefix}} {{item.createdLabel}}</text>
-          <text class="tl-card__stamp-item">{{copy.updatedAtPrefix}} {{item.updatedLabel}}</text>
+          <text class="tl-card__stamp-item" wx:if="{{item.updatedLabel !== item.createdLabel}}">{{copy.updatedAtPrefix}} {{item.updatedLabel}}</text>
         </view>
         <view class="tl-card__actions">
           <view class="btn btn--ghost" data-id="{{item.id}}" bindtap="onEdit" aria-role="button" aria-label="{{buttons.edit}}">{{buttons.edit}}</view>
@@ -122,8 +131,8 @@
     </view>
   </view>
 
-  <view class="mhp-empty" wx:else>
+  <view class="mhp-empty" wx:elif="{{!formOpen}}">
     <view class="mhp-empty__badge"><view class="mhp-ico mhp-ico--stethoscope"></view></view>
     <text class="mhp-empty__text">{{emptyText}}</text>
-    <view class="btn btn--primary mhp-empty__action" bindtap="onAdd" aria-role="button" aria-label="{{buttons.add}}">{{buttons.add}}</view>
+
   </view>

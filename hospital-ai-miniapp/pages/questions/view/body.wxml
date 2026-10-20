@@ -3,10 +3,11 @@
      根壳（.questions 的 class / inline scale 变量）与 <app-sidebar> 由宿主提供，不在此处。 -->
   <view class="hero">
     <view class="hero__text">
+      <view class="mhp-page-kicker"><view class="mhp-page-kicker__dot"></view><text>就诊问题  /  03</text></view>
       <text class="hero__title">{{copy.title}}</text>
       <text class="hero__sub">{{copy.intro}}</text>
     </view>
-    <view class="hero__add" wx:if="{{!formOpen}}" bindtap="onAdd" aria-role="button" aria-label="{{buttons.add}}">{{buttons.add}}</view>
+    <view class="hero__add" wx:if="{{!formOpen && !importOpen}}" bindtap="onAdd" aria-role="button" aria-label="{{buttons.add}}"><text class="hero__add-plus">＋</text><text>{{buttons.add}}</text></view>
   </view>
 
   <view class="progress" wx:if="{{hasRecords}}">
@@ -20,23 +21,15 @@
     </view>
   </view>
 
-  <view class="stats" wx:if="{{hasGroups}}">
-    <text class="stats__title">{{copy.groupStatsTitle}}</text>
-    <view class="stats__list">
-      <view class="chip" wx:for="{{groupStats}}" wx:key="group">
-        <text class="chip__name">{{item.label}}</text>
-        <text class="chip__count">{{item.done}}/{{item.total}}</text>
-      </view>
-    </view>
-  </view>
-
-  <view class="toolbar">
+  <view class="toolbar" wx:if="{{!formOpen}}">
     <picker
       class="toolbar__filter"
+      wx:if="{{hasRecords}}"
       mode="selector"
       range="{{filterOptions}}"
       value="{{filterIndex}}"
       bindchange="onFilterChange"
+      aria-label="待问问题筛选"
     >
       <view class="picker">{{copy.filterLabel}}：{{filterLabel}}</view>
     </picker>
@@ -54,8 +47,10 @@
         class="field__area"
         value="{{importText}}"
         placeholder="{{copy.importTextPlaceholder}}"
+        placeholder-style="{{highContrast ? 'color:#FFFFFF' : 'color:#5A7068'}}"
         bindinput="onImportTextInput"
         maxlength="2000"
+        aria-label="批量导入问题"
       />
     </view>
     <view class="field">
@@ -64,8 +59,10 @@
         class="field__input"
         value="{{importGroup}}"
         placeholder="{{copy.groupPlaceholder}}"
+        placeholder-class="mhp-placeholder"
         bindinput="onImportGroupInput"
         maxlength="30"
+        aria-label="导入问题的分组"
       />
       <view class="chips" wx:if="{{groupChips.length}}">
         <text class="field__hint">{{copy.groupQuickHint}}</text>
@@ -93,8 +90,10 @@
         class="field__area"
         value="{{form.text}}"
         placeholder="{{copy.textPlaceholder}}"
+        placeholder-style="{{highContrast ? 'color:#FFFFFF' : 'color:#5A7068'}}"
         bindinput="onTextInput"
         maxlength="200"
+        aria-label="问题内容"
       />
     </view>
 
@@ -104,8 +103,10 @@
         class="field__input"
         value="{{form.group}}"
         placeholder="{{copy.groupPlaceholder}}"
+        placeholder-class="mhp-placeholder"
         bindinput="onGroupInput"
         maxlength="30"
+        aria-label="问题分组"
       />
       <view class="chips" wx:if="{{groupChips.length}}">
         <text class="field__hint">{{copy.groupQuickHint}}</text>
@@ -144,7 +145,7 @@
       </view>
       <view class="q__stamp">
         <text class="q__stamp-item">{{copy.createdAtPrefix}} {{item.createdLabel}}</text>
-        <text class="q__stamp-item">{{copy.updatedAtPrefix}} {{item.updatedLabel}}</text>
+        <text class="q__stamp-item" wx:if="{{item.updatedLabel !== item.createdLabel}}">{{copy.updatedAtPrefix}} {{item.updatedLabel}}</text>
       </view>
       <view class="q__actions">
         <view class="btn btn--ghost" data-id="{{item.id}}" bindtap="onEdit" aria-role="button" aria-label="{{buttons.edit}}">{{buttons.edit}}</view>
@@ -153,8 +154,19 @@
     </view>
   </view>
 
-  <view class="mhp-empty" wx:else>
+  <view class="mhp-empty" wx:elif="{{!formOpen && !importOpen}}">
     <view class="mhp-empty__badge"><view class="mhp-ico mhp-ico--message-circle-question"></view></view>
     <text class="mhp-empty__text">{{emptyText}}</text>
-    <view class="btn btn--primary mhp-empty__action" bindtap="onAdd" aria-role="button" aria-label="{{buttons.add}}">{{buttons.add}}</view>
+
+  </view>
+
+  <!-- 统计放在列表后，初次进入先看到问题与筛选。 -->
+  <view class="stats" wx:if="{{hasGroups}}">
+    <text class="stats__title">{{copy.groupStatsTitle}}</text>
+    <view class="stats__list">
+      <view class="chip" wx:for="{{groupStats}}" wx:key="group">
+        <text class="chip__name">{{item.label}}</text>
+        <text class="chip__count">{{item.done}}/{{item.total}}</text>
+      </view>
+    </view>
   </view>

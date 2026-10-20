@@ -7,8 +7,8 @@
 
 | 功能 | 说明 | 代码锚点 |
 | --- | --- | --- |
-| 全局左侧导航栏与单页切换 | 可折叠侧边栏，列出全部 8 个页面；在单页工作台内点击即在页内切换页面（不跳转、不整页重建），各页滚动位置独立保持，系统导航栏标题随当前页更新；当前页高亮；收起 / 展开状态保存在本机偏好。8 个页面另保留可直接打开的独立路由 | `hospital-ai-miniapp/components/app-sidebar/app-sidebar.ts`（`mode: 'select'`）；`hospital-ai-miniapp/pages/workspace/workspace.ts: onSelect / switchSection / applyTitle`；`hospital-ai-miniapp/shared/ui/nav.ts` / `hospital-ai-miniapp/shared/ui/sidebar.ts` |
-| 工作台总览 | 按本机时间给出问候语与一句话产品定位，附本机日期；展示健康档案准备总览（完整度 + 进度条）、症状/资料/待问计数、最近记录与使用提示。功能入口改由全局左侧导航栏承载；工作台同时作为单页宿主，统一持有字号、高对比与系统导航栏标题，承载 8 个页面在页内切换 | `hospital-ai-miniapp/pages/home/home.ts: refresh / greetingFor / todayLabelFor`；`hospital-ai-miniapp/pages/workspace/workspace.ts: onSelect / applyTitle / onPrefsChanged`；`hospital-ai-miniapp/config/texts.ts: HOME` |
+| 底部五入口导航与单页切换 | 手机工作台展示首页、记录、摘要、AI、我的五个底部入口；「记录」可切换症状/资料/待问，「我的」可切换档案/设置。8 个功能区均在当前页内切换、分别保留滚动位置，记录与我的重新进入时返回上次查看的功能，系统标题与当前功能区同步。8 个原独立路由继续支持深链打开并保留兼容左侧栏 | `hospital-ai-miniapp/shared/ui/nav.ts: PRIMARY_TABS / RECORD_SECTIONS / MINE_SECTIONS / primaryTabForSection`；`hospital-ai-miniapp/pages/workspace/workspace.ts: onTabSelect / onSubtabSelect / switchSection / applyTitle` |
+| 工作台总览 | 按本机时间显示日期与问候；首屏主操作按实际数据切换：无有效档案和记录时引导记症状，有可用摘要来源后才引导生成就医摘要；展示档案完整度、症状/资料/待问计数、最近五条记录和使用提示。内存切换与显示偏好由工作台宿主负责 | `hospital-ai-miniapp/pages/home/view/controller.ts: refresh / onEntryTap`；`hospital-ai-miniapp/pages/home/view/body.wxml`；`hospital-ai-miniapp/pages/workspace/workspace.ts: onTabSelect / onPrefsChanged` |
 | 个人档案（单例） | 称呼、年龄段、性别（可选）、过敏、长期用药、既往情况；本机保存与清除 | `hospital-ai-miniapp/shared/services/records.ts: profile`；`hospital-ai-miniapp/pages/profile/profile.ts: onSave / onClear` |
 | 症状时间线 | 按发生时间记录症状原话、持续时长、影响、标签与 1 个附件 | `hospital-ai-miniapp/shared/services/records.ts: symptoms`；`hospital-ai-miniapp/pages/symptoms/symptoms.ts: onSave` |
 | 资料摘录 | 记录资料名称、摘录、来源日期、备注与 1 个附件 | `hospital-ai-miniapp/shared/services/records.ts: notes`；`hospital-ai-miniapp/pages/notes/notes.ts: onSave` |

@@ -4,8 +4,8 @@
 //
 // Zero-dependency (Node built-ins only). Deterministic: identical inputs -> identical output.
 //
-// Scope — matches the source-size definition in docs/PROJECT-PLAN.md §1 (13,758 lines):
-//   hospital-ai-miniapp/**   .ts .wxml .wxss  +  app.json / sitemap.json / pages/*/*.json
+// Scope — product-source files; current counts are recorded in source-material.json:
+//   hospital-ai-miniapp/**   .ts .wxml .wxss .json
 //   server/**                .ts .mjs
 // Excluded (developer-tool / local config; listed verbatim in the generated index):
 //   hospital-ai-miniapp/project.config.json
@@ -14,6 +14,7 @@
 //   server/config.json          (local only, gitignored)
 //   server/config.example.json
 //   server/demo-fixtures.json
+//   server/mock-upstream.mjs   (test-only upstream simulator)
 //   server/tsconfig.json
 //
 // Output (artifacts/soft-copyright/):
@@ -49,6 +50,7 @@ const EXCLUDED_PATHS = new Set([
   'server/config.json',
   'server/config.example.json',
   'server/demo-fixtures.json',
+  'server/mock-upstream.mjs',
   'server/tsconfig.json',
 ]);
 

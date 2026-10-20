@@ -3,6 +3,7 @@
      根壳（.brief 的 class / inline scale 变量 / app-shell）与 <app-sidebar> 由宿主提供，不在此处。
      无障碍：交互节点的 aria-role / aria-label 随主体保留；缩放与高对比钩子在宿主根节点。 -->
   <view class="hero">
+    <view class="mhp-page-kicker"><view class="mhp-page-kicker__dot"></view><text>就医准备  /  摘要</text></view>
     <text class="hero__title">{{copy.title}}</text>
     <text class="hero__sub">{{copy.intro}}</text>
   </view>
@@ -92,7 +93,7 @@
     <text class="mhp-empty__text">{{emptyText}}</text>
   </view>
 
-  <view class="generate">
+  <view class="generate" wx:if="{{hasSourceRecords || profileAvailable}}">
     <view class="btn btn--primary" bindtap="onGenerate" aria-role="button" aria-label="{{copy.generate}}">{{copy.generate}}</view>
   </view>
 
@@ -107,8 +108,10 @@
       class="editor__area"
       value="{{content}}"
       placeholder="{{copy.editorPlaceholder}}"
+      placeholder-style="{{highContrast ? 'color:#FFFFFF' : 'color:#5A7068'}}"
       bindinput="onContentInput"
       maxlength="-1"
+      aria-label="就医摘要正文"
     />
     <view class="editor__actions">
       <view class="btn btn--primary" bindtap="onSave" aria-role="button" aria-label="{{buttons.save}}">{{buttons.save}}</view>
@@ -126,7 +129,7 @@
         <text class="row__meta" wx:if="{{item.exportedLabel}}">{{copy.savedAtPrefix}} {{item.exportedLabel}}</text>
       </view>
       <view class="btn btn--ghost" data-id="{{item.id}}" bindtap="onOpenBrief" aria-role="button" aria-label="{{copy.open}}">{{copy.open}}</view>
-      <view class="btn btn--ghost" data-id="{{item.id}}" bindtap="onDeleteBrief" aria-role="button" aria-label="删除这段摘要">{{buttons.delete}}</view>
+      <view class="btn btn--danger" data-id="{{item.id}}" bindtap="onDeleteBrief" aria-role="button" aria-label="删除这段摘要">{{buttons.delete}}</view>
     </view>
   </view>
 

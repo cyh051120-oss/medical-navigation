@@ -1,333 +1,389 @@
-/* pages/home/home.wxss — 个人工作台（任务 13；视觉充实版）。
-   信息架构（自上而下）：
-     ① 问候与定位：问候 + 本地日期 + 产品一句话
-     ② 准备总览：档案完整度大号数值 + 进度条 + 提示
-     ③ 记录概览：症状 / 资料 / 待问 三块计数卡（可点按进入）
-     ④ 最近记录：扫描带（固定 tag 列宽，保证各行摘要左边缘对齐）
-     ⑤ 使用提示：安全提示句 + 本地优先说明
-   全局导航改由左侧栏承载，工作台不再重复列功能入口。
-
-   层次不靠新增字号：字号沿用 tokens.wxss 的四档
-   （44 / 32 / 28 / 24，均 calc(Nrpx * var(--mhp-scale))）；
-   准备总览的大号数值用 40rpx「统计数值级」（非文字层级，见 tokens.wxss）。
-   全部颜色消费 styles/tokens.wxss 的语义令牌，不写裸色值。 */
-
+/* 视觉语言：暖白工作纸张 + 松绿墨色 + 轻薄荷高频动作。
+   与所有业务宿主共享同一组语义令牌；高对比走 app.wxss 映射。 */
 .workbench {
-  min-height: 100%;
   box-sizing: border-box;
-  padding: var(--mhp-space-8) var(--mhp-space-7) var(--mhp-space-11);
-  background: var(--bg-main);
+  min-height: 100%;
+  padding: var(--mhp-space-5) var(--mhp-space-7) var(--mhp-space-11);
   color: var(--text-body);
+  background: var(--bg-main);
 }
-
-/* ----- ① 定位 ----- */
-
 .wb-hero {
-  padding: var(--mhp-space-2) var(--mhp-space-2) var(--mhp-space-6);
+  padding: var(--mhp-space-3) var(--mhp-space-2) var(--mhp-space-8);
 }
-
-.wb-hero__top {
+.wb-hero__meta {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: var(--mhp-space-4);
+  flex-wrap: wrap;
+  gap: var(--mhp-space-3);
+  margin-bottom: var(--mhp-space-7);
 }
-
-/* page title tier */
+.wb-hero__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--mhp-space-3);
+  font-size: calc(24rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-caption);
+  color: var(--color-primary);
+  font-weight: var(--mhp-fw-semibold);
+  letter-spacing: 2rpx;
+}
+.wb-hero__brand-symbol {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(38rpx * var(--mhp-layout-scale));
+  height: calc(38rpx * var(--mhp-layout-scale));
+  border-radius: var(--radius-xs);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+.wb-hero__brand-symbol .mhp-ico {
+  width: calc(24rpx * var(--mhp-layout-scale));
+  height: calc(24rpx * var(--mhp-layout-scale));
+}
+.wb-hero__date {
+  font-size: calc(23rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-caption);
+  color: var(--text-caption);
+}
 .wb-hero__greeting {
-  flex: 1;
-  min-width: 0;
-  font-size: calc(44rpx * var(--mhp-scale));
+  display: block;
+  font-size: calc(48rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-title);
   font-weight: var(--mhp-fw-semibold);
   color: var(--text-title);
+  word-break: break-word;
+  letter-spacing: -1rpx;
 }
-
-/* caption tier —— 本地日期，靠右与问候同行 */
-.wb-hero__date {
-  flex: none;
-  font-size: calc(24rpx * var(--mhp-scale));
-  line-height: var(--mhp-lh-caption);
-  color: var(--text-caption);
-  white-space: nowrap;
-}
-
-/* body tier —— 产品定位句（首屏的"这是什么"） */
 .wb-hero__tagline {
   display: block;
-  margin-top: var(--mhp-space-3);
-  font-size: calc(28rpx * var(--mhp-scale));
+  max-width: 620rpx;
+  margin-top: var(--mhp-space-4);
+  font-size: calc(25rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-body);
-  color: var(--text-body);
+  color: var(--text-caption);
 }
-
-/* ----- ② 准备总览（档案完整度） ----- */
-
-.wb-overview {
-  margin-top: var(--mhp-space-8);
+/* Signature: a single ink-green preparation card, mint action and orbital mark. */
+.wb-next {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  overflow: hidden;
+  min-height: 302rpx;
+  box-sizing: border-box;
   padding: var(--mhp-space-8);
-  border-radius: var(--radius-lg);
-  background: var(--bg-card);
+  border-radius: var(--radius-xl);
+  color: var(--color-on-action);
+  background: var(--surface-action);
   box-shadow: var(--shadow-md);
 }
-
+.wb-next__ornament {
+  position: absolute;
+  top: -132rpx;
+  right: -114rpx;
+  width: 370rpx;
+  height: 370rpx;
+  border-radius: 50%;
+  border: 48rpx solid var(--color-primary);
+  opacity: 0.42;
+}
+.wb-next__copy {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-width: 0;
+}
+.wb-next__eyebrow {
+  display: flex;
+  align-items: center;
+  gap: var(--mhp-space-3);
+  font-size: calc(23rpx * var(--mhp-scale));
+  font-weight: var(--mhp-fw-semibold);
+  line-height: var(--mhp-lh-caption);
+  color: var(--color-decoration);
+}
+.wb-next__signal {
+  width: 11rpx;
+  height: 11rpx;
+  border-radius: 50%;
+  background: var(--color-decoration);
+}
+.wb-next__title {
+  display: block;
+  margin-top: var(--mhp-space-4);
+  font-size: calc(39rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-title);
+  font-weight: var(--mhp-fw-semibold);
+  color: var(--color-on-action);
+}
+.wb-next__desc {
+  display: block;
+  margin-top: var(--mhp-space-4);
+  max-width: 520rpx;
+  font-size: calc(25rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-body);
+  color: var(--color-on-action);
+  opacity: 0.82;
+}
+.wb-next__action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mhp-space-5);
+  margin-top: var(--mhp-space-7);
+  padding: var(--mhp-space-3) var(--mhp-space-6);
+  border-radius: var(--radius-xl);
+  font-size: calc(25rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-body);
+  font-weight: var(--mhp-fw-semibold);
+  color: var(--surface-action);
+  background: var(--color-decoration);
+}
+.wb-next__art {
+  position: absolute;
+  z-index: 1;
+  right: 30rpx;
+  top: 31rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(94rpx * var(--mhp-layout-scale));
+  height: calc(94rpx * var(--mhp-layout-scale));
+  border: 2rpx solid var(--color-decoration);
+  border-radius: var(--radius-xl);
+  color: var(--color-decoration);
+}
+.wb-next__icon {
+  width: calc(43rpx * var(--mhp-layout-scale));
+  height: calc(43rpx * var(--mhp-layout-scale));
+}
+/* The hero artwork is decorative; large type needs full text width. */
+.workbench.is-large-text .wb-next__art,
+.is-large-text .workbench .wb-next__art { opacity: 0.20; }
+.wb-overview {
+  margin-top: var(--mhp-space-6);
+  padding: var(--mhp-space-7) var(--mhp-space-8);
+  border: 2rpx solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-sm);
+}
 .wb-overview__head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: var(--mhp-space-4);
+  flex-wrap: wrap;
+  gap: var(--mhp-space-3);
 }
-
-/* body tier */
 .wb-overview__title {
   font-size: calc(28rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-body);
-  color: var(--text-body);
+  font-weight: var(--mhp-fw-semibold);
+  color: var(--text-title);
 }
-
-/* caption tier */
 .wb-overview__link {
   display: inline-flex;
   align-items: center;
   min-height: 88rpx;
-  padding: 0 var(--mhp-space-2);
   font-size: calc(24rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-caption);
   color: var(--color-primary);
-  text-decoration: underline;
 }
-
 .wb-overview__metric {
   display: flex;
   align-items: baseline;
+  flex-wrap: wrap;
   gap: var(--mhp-space-2);
-  margin-top: var(--mhp-space-4);
+  margin-top: var(--mhp-space-2);
 }
-
-/* 统计数值级（40rpx）——承载"已完善 X / Y"的主角数字 */
 .wb-overview__value {
-  font-size: calc(40rpx * var(--mhp-scale));
+  font-size: calc(42rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-title);
   font-weight: var(--mhp-fw-semibold);
-  color: var(--color-primary);
+  color: var(--text-title);
 }
-
 .wb-overview__total {
-  font-size: calc(32rpx * var(--mhp-scale));
+  font-size: calc(29rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-title);
   color: var(--text-caption);
 }
-
-/* caption tier */
 .wb-overview__unit {
-  margin-left: var(--mhp-space-3);
+  margin-left: var(--mhp-space-2);
   font-size: calc(24rpx * var(--mhp-scale));
-  line-height: var(--mhp-lh-caption);
   color: var(--text-caption);
 }
-
 .wb-overview__bar {
   height: 12rpx;
   margin-top: var(--mhp-space-5);
   border-radius: var(--radius-xl);
-  background: var(--bg-main);
   overflow: hidden;
+  background: var(--bg-accent);
 }
-
 .wb-overview__fill {
   height: 100%;
   border-radius: var(--radius-xl);
   background: var(--color-primary);
   transition: width var(--motion-normal) var(--ease-standard);
 }
-
-/* caption tier */
 .wb-overview__hint {
   display: block;
-  margin-top: var(--mhp-space-5);
+  margin-top: var(--mhp-space-4);
   font-size: calc(24rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-caption);
   color: var(--text-caption);
 }
-
-/* ----- ③ 记录概览（三块计数卡，可点按进入对应页） ----- */
-
-.wb-stats {
-  display: flex;
-  gap: var(--mhp-space-5);
-  margin-top: var(--mhp-space-7);
-}
-
-.wb-stat {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--mhp-space-3);
-  padding: var(--mhp-space-7) var(--mhp-space-4);
-  border-radius: var(--radius-md);
-  background: var(--bg-card);
-  box-shadow: var(--shadow-sm);
-}
-
-.wb-stat__ico {
-  width: calc(44rpx * var(--mhp-scale));
-  height: calc(44rpx * var(--mhp-scale));
-  color: var(--color-primary);
-}
-
-/* section title tier */
-.wb-stat__num {
-  font-size: calc(32rpx * var(--mhp-scale));
-  line-height: var(--mhp-lh-title);
-  font-weight: var(--mhp-fw-semibold);
-  color: var(--text-title);
-}
-
-/* caption tier */
-.wb-stat__label {
-  font-size: calc(24rpx * var(--mhp-scale));
-  line-height: var(--mhp-lh-caption);
-  color: var(--text-caption);
-}
-
-/* ----- 区块标题（④ 最近记录通用一种形态，避免同层竞争） ----- */
-
-.wb-section {
-  margin-top: var(--mhp-space-10);
-}
-
+.wb-section { margin-top: var(--mhp-space-9); }
 .wb-section__head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--mhp-space-2) var(--mhp-space-5);
   margin-bottom: var(--mhp-space-5);
 }
-
-/* section title tier */
 .wb-section__title {
   font-size: calc(32rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-title);
   font-weight: var(--mhp-fw-semibold);
   color: var(--text-title);
 }
-
-/* caption tier */
 .wb-section__hint {
   font-size: calc(24rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-caption);
   color: var(--text-caption);
 }
-
-/* ----- ③ 最近记录（扫描带） ----- */
-
-.wb-list {
+.wb-stats { display: flex; gap: var(--mhp-space-3); }
+.wb-stat {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: var(--mhp-space-4);
+  align-items: center;
+  justify-content: center;
+  padding: var(--mhp-space-5) var(--mhp-space-2);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  border: 2rpx solid var(--border-subtle);
 }
-
-.wb-row {
+.wb-stat__symbol {
   display: flex;
   align-items: center;
-  gap: var(--mhp-space-4);
-  padding: var(--mhp-space-6) var(--mhp-space-7);
+  justify-content: center;
+  width: calc(58rpx * var(--mhp-layout-scale));
+  height: calc(58rpx * var(--mhp-layout-scale));
   border-radius: var(--radius-md);
-  background: var(--bg-card);
-  box-shadow: var(--shadow-sm);
+  background: var(--bg-accent);
+  color: var(--color-primary);
 }
-
-/* 最小列宽随字号缩放：让最长/最短标签（资料 / 症状）之后的内容左边缘对齐，
-   同时保证大字档两字标签不被换行成竖排。 */
-.wb-row__tag {
-  flex: none;
-  min-width: calc(88rpx * var(--mhp-scale));
-  box-sizing: border-box;
-  padding: var(--mhp-space-1) 0;
-  border-radius: var(--radius-sm);
+.wb-stat__ico {
+  width: calc(30rpx * var(--mhp-layout-scale));
+  height: calc(30rpx * var(--mhp-layout-scale));
+}
+.wb-stat__num {
+  margin-top: var(--mhp-space-3);
+  font-size: calc(37rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-title);
+  font-weight: var(--mhp-fw-semibold);
+  color: var(--text-title);
+}
+.wb-stat__label {
+  margin-top: var(--mhp-space-2);
   font-size: calc(24rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-caption);
+  color: var(--text-caption);
   text-align: center;
-  color: var(--color-primary);
-  background: var(--bg-main);
 }
-
-/* body tier — wraps instead of ellipsizing so long text is never truncated */
+.wb-list {
+  border: 2rpx solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  overflow: hidden;
+}
+.wb-row {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: var(--mhp-space-3) var(--mhp-space-4);
+  padding: var(--mhp-space-6) var(--mhp-space-7);
+}
+.wb-row + .wb-row { border-top: 2rpx solid var(--border-subtle); }
+.wb-row__tag {
+  flex: none;
+  padding: var(--mhp-space-1) var(--mhp-space-3);
+  border-radius: var(--radius-xs);
+  font-size: calc(24rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-caption);
+  color: var(--color-primary);
+  background: var(--bg-accent);
+}
 .wb-row__summary {
   flex: 1;
   min-width: 0;
   font-size: calc(28rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-body);
-  color: var(--text-body);
-  word-break: break-all;
+  color: var(--text-title);
+  word-break: break-word;
 }
-
-/* caption tier */
 .wb-row__time {
-  flex: none;
-  font-size: calc(24rpx * var(--mhp-scale));
+  display: block;
+  flex: 1 1 100%;
+  font-size: calc(23rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-caption);
   color: var(--text-caption);
 }
-
-/* 空态里的动作按钮（此前空态只有文字，文案却让用户"点击下方按钮"） */
 .wb-empty__action {
   align-self: center;
-  padding: var(--mhp-space-4) var(--mhp-space-9);
+  min-height: 88rpx;
+  display: flex;
+  align-items: center;
+  padding: var(--mhp-space-2) var(--mhp-space-7);
   border-radius: var(--radius-md);
-  font-size: calc(28rpx * var(--mhp-scale));
-  line-height: var(--mhp-lh-body);
-  font-weight: var(--mhp-fw-semibold);
-  color: var(--bg-card);
   background: var(--color-primary);
-  text-align: center;
+  font-size: calc(28rpx * var(--mhp-scale));
+  color: var(--color-on-primary);
 }
-
-/* ----- ⑤ 使用提示 ----- */
-
 .wb-tips {
   display: flex;
-  gap: var(--mhp-space-5);
-  margin-top: var(--mhp-space-10);
-  padding: var(--mhp-space-7);
-  border-radius: var(--radius-md);
-  background: var(--bg-card);
-  box-shadow: var(--shadow-sm);
+  gap: var(--mhp-space-4);
+  margin-top: var(--mhp-space-9);
+  padding: var(--mhp-space-6);
+  border: 2rpx solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-warm);
 }
-
 .wb-tips__ico {
   flex: none;
-  width: calc(36rpx * var(--mhp-scale));
-  height: calc(36rpx * var(--mhp-scale));
+  width: calc(32rpx * var(--mhp-layout-scale));
+  height: calc(32rpx * var(--mhp-layout-scale));
   margin-top: var(--mhp-space-1);
-  color: var(--color-primary);
+  color: var(--color-warm);
 }
-
-.wb-tips__body {
-  flex: 1;
-  min-width: 0;
-}
-
-/* body tier */
+.wb-tips__body { flex: 1; min-width: 0; }
 .wb-tips__title {
   display: block;
-  font-size: calc(28rpx * var(--mhp-scale));
-  line-height: var(--mhp-lh-body);
+  font-size: calc(26rpx * var(--mhp-scale));
   font-weight: var(--mhp-fw-semibold);
   color: var(--text-title);
 }
-
-/* caption tier */
 .wb-tips__text {
   display: block;
-  margin-top: var(--mhp-space-3);
+  margin-top: var(--mhp-space-2);
   font-size: calc(24rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-caption);
   color: var(--text-body);
 }
-
-.wb-tips__text--muted {
-  margin-top: var(--mhp-space-2);
-  color: var(--text-caption);
+.wb-tips__text--muted { color: var(--text-caption); }
+/* HC must preserve ink-card hierarchy without relying on opacity alone. */
+.is-hc .wb-next__action,
+.workbench.is-hc .wb-next__action {
+  border: 2rpx solid var(--mhp-hc-bg);
+  background: var(--mhp-hc-bg);
+  color: var(--mhp-hc-accent);
 }
+.is-hc .wb-next__eyebrow,
+.workbench.is-hc .wb-next__eyebrow { color: var(--mhp-hc-bg); }
+.is-hc .wb-next__signal,
+.workbench.is-hc .wb-next__signal { background: var(--mhp-hc-bg); }
+.is-hc .wb-next__art,
+.workbench.is-hc .wb-next__art { color: var(--mhp-hc-bg); border-color: var(--mhp-hc-bg); }

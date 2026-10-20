@@ -1,7 +1,7 @@
 // pages/workspace/workspace.ts — 单页工作台（workspace SPA）宿主页（P1 基建）。
 //
 // 职责：作为 app.json 的启动页，在单页内承载各功能区 section（内存切换，不重建页面），
-// 并统一持有宿主级状态：a11y（字号/高对比）、侧栏（展开/收起）、系统导航栏标题与分享。
+// 并统一持有宿主级状态：a11y（字号/高对比）、五入口导航、系统导航栏标题与分享。
 //
 // 范围：全部 8 个功能区均已迁入本页为 section（内存切换）；wrapper 路由页保留为兼容面
 // （深链/e2e/截图），本页不再发起整页跳转。
@@ -10,8 +10,7 @@
 // 宿主隐藏 → onHostHide。由本页显式调用，不用平台 behaviors（H 层捕获不展开 behaviors）。
 
 import { A11Y_DATA, syncA11y } from '../../shared/ui/a11y';
-import { SIDEBAR_DATA, setSidebarCollapsed, syncSidebar } from '../../shared/ui/sidebar';
-import { NAV_ITEMS } from '../../shared/ui/nav';
+import { NAV_ITEMS, PRIMARY_TABS, RECORD_SECTIONS, MINE_SECTIONS, primaryTabForSection } from '../../shared/ui/nav';
 import { POSTER } from '../../config/texts';
 
 /** 已迁移的 section 注册表（key 对应 NAV_ITEMS[].key）。 */
@@ -37,15 +36,21 @@ function titleFor(key: string): string {
 Page({
   data: {
     active: DEFAULT_SECTION,
+    activeTab: primaryTabForSection(DEFAULT_SECTION),
+    primaryTabs: PRIMARY_TABS,
+    recordSections: RECORD_SECTIONS,
+    mineSections: MINE_SECTIONS,
     mounted: { home: true },
     /** ai section 的入口模式（onLoad 从 query.mode 透传；ai-view 仅首次激活消费）。 */
     aiMode: '',
     ...A11Y_DATA,
-    ...SIDEBAR_DATA,
   },
 
   /** onLoad 解析出的 ai 模式（P1 暂存，供后续 ai section 透传）。 */
   mode: '',
+  /** 返回一级导航时恢复该区域上次打开的 section。 */
+  lastRecordsSection: 'symptoms',
+  lastMineSection: 'profile',
 
   onLoad(query: Record<string, string | undefined>) {
     const section = query && typeof query.section === 'string' ? query.section : '';
@@ -53,13 +58,19 @@ Page({
     const active = MIGRATED_SECTIONS.includes(section) ? section : DEFAULT_SECTION;
     const mode = query && typeof query.mode === 'string' ? query.mode : '';
     this.mode = mode;
-    this.setData({ active, aiMode: mode, mounted: { ...this.data.mounted, [active]: true } });
+    if (primaryTabForSection(active) === 'records') this.lastRecordsSection = active;
+    if (primaryTabForSection(active) === 'mine') this.lastMineSection = active;
+    this.setData({
+      active,
+      activeTab: primaryTabForSection(active),
+      aiMode: mode,
+      mounted: { ...this.data.mounted, [active]: true },
+    });
     this.applyTitle(active);
   },
 
   onShow() {
     syncA11y(this);
-    syncSidebar(this);
     this.syncNavColor();
     this.activate(this.data.active);
   },
@@ -73,20 +84,24 @@ Page({
     this.section(this.data.active)?.onHostHide?.();
   },
 
-  /** 侧栏收起/展开：落盘偏好并回写 data（语义与各路由页一致）。 */
-  onSidebarToggle() {
-    this.setData(setSidebarCollapsed(!this.data.sidebarCollapsed));
+  /** 五个一级入口：记录与我的默认返回该区域上次使用的功能区。 */
+  onTabSelect(event: WechatMiniprogram.TouchEvent) {
+    const key = event.currentTarget.dataset.tab;
+    if (typeof key !== 'string') return;
+    const item = PRIMARY_TABS.find((entry) => entry.key === key);
+    if (!item) return;
+    const section = key === 'records'
+      ? this.lastRecordsSection
+      : key === 'mine' ? this.lastMineSection : item.section;
+    this.switchSection(section);
   },
 
-  /** 侧栏 select：内存切换 section（8 项全部已迁移；未知 key 保底不动作）。 */
-  onSelect(event: WechatMiniprogram.CustomEvent<{ key?: string; route?: string }>) {
-    const detail = event.detail || {};
-    const key = typeof detail.key === 'string' ? detail.key : '';
-    const route = typeof detail.route === 'string' ? detail.route : '';
-    if (key === '' || route === '') return;
-    if (key === this.data.active) return;
-
-    this.switchSection(key);
+  /** 次级导航：只允许切换本区域内的正式 section。 */
+  onSubtabSelect(event: WechatMiniprogram.TouchEvent) {
+    const section = event.currentTarget.dataset.section;
+    if (typeof section !== 'string') return;
+    if (primaryTabForSection(section) !== this.data.activeTab) return;
+    this.switchSection(section);
   },
 
   /** section 内导航 seam：controller 经 hostNavigate 触发；按 route 反查 key 后走同一内存切换。 */
@@ -101,13 +116,19 @@ Page({
     this.switchSection(item.key);
   },
 
-  /** 已迁移 section 的内存切换（onSelect 与 onSectionNavigate 共用）；不在注册表的 key 保底返回 false。 */
+  /** 已迁移 section 的内存切换（底部导航、次级导航与内容入口共用）；不在注册表的 key 保底返回 false。 */
   switchSection(key: string): boolean {
     if (!MIGRATED_SECTIONS.includes(key)) return false;
+    if (key === this.data.active) return true;
     this.section(this.data.active)?.onDeactivate?.();
-    this.setData({ active: key, mounted: { ...this.data.mounted, [key]: true } });
+    const activeTab = primaryTabForSection(key);
+    if (activeTab === 'records') this.lastRecordsSection = key;
+    if (activeTab === 'mine') this.lastMineSection = key;
+    this.setData({ active: key, activeTab, mounted: { ...this.data.mounted, [key]: true } }, () => {
+      // 首次挂载是异步的；仅激活仍处于前台的目标，不误激活已切走的组件。
+      if (this.data.active === key) this.activate(key);
+    });
     this.applyTitle(key);
-    this.activate(key);
     return true;
   },
 

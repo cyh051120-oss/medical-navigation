@@ -62,16 +62,16 @@ const LAYOUT = {
   ruleWidth: 2,
 } as const;
 
-/** 固定配色（canvas 无法读取 CSS 变量，取 app.wxss 设计令牌的字面值）。 */
+/** Canvas 绘制无法消费 WXSS 自定义属性；下面的品牌色镜像应与 tokens.wxss 同步。 */
 const COLORS = {
-  background: '#F4F6F9',
+  background: '#F6F9F7',
   card: '#FFFFFF',
-  header: '#2A4FD7',
+  header: '#154C42',
   headerText: '#FFFFFF',
-  body: '#1D2129',
-  rule: '#E5E6EB',
-  footerNotice: '#2A4FD7',
-  footerMeta: '#86909C',
+  body: '#183B34',
+  rule: '#E0EBE5',
+  footerNotice: '#0C7568',
+  footerMeta: '#5A7068',
 } as const;
 
 /** 绘制命令：渲染器逐条执行，计划本身不含任何宿主能力。 */

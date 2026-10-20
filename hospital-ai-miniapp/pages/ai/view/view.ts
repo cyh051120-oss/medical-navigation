@@ -11,8 +11,8 @@
 //   onActivate   = 旧 onShow：pageHidden=false；首激活消费入口 mode；loadAll + refreshHealth；
 //                  若入口/待处理 mode 为 consult 则在刷新后 setMode('consult')。
 //                  切换回来后重置 destroyed=false（重新可用，等价于旧页面的「重新进入」）。
-//   onDeactivate = 旧 onUnload / 切走：destroyed=true、sendToken++、abortPendingRequests()，
-//                  实例内所有异步回调据 token/flag 判死，杜绝过期快照回写（等价旧 reLaunch 离开）。
+//   onDeactivate = 切走：销毁态 + sendToken++ + abortPendingRequests()，并清理发送预览和
+//                  sending 状态；实例内旧回调据 token/flag 判死，切回后仍可发起新请求。
 //   onHostHide   = 旧 onHide：仅 pageHidden=true（宿主进后台，不 abort 在飞请求）。
 //   onHostShow   = 旧页面无独立「宿主显示」语义：统一走 onActivate。
 
@@ -95,6 +95,10 @@ Component({
       const inst = this as unknown as AiViewInstance;
       inst.destroyed = true;
       inst.sendToken += 1;
+      // SPA 不销毁组件：旧请求已通过 token 失效、abort 后不会再复位 sending。
+      // 离开时同步清空未提交预览和加载状态，避免下次进入被错误锁死在「发送中」。
+      this.onCancelPreview();
+      if (this.data.sending === true) this.setData({ sending: false });
       abortPendingRequests();
     },
 

@@ -3,11 +3,48 @@
      根壳（.ai 的 class / inline scale 变量 / app-shell）与 <app-sidebar> 由宿主提供，不在此处。
      无障碍：交互节点的 aria-role / aria-label 随主体保留；缩放与高对比钩子在宿主根节点。 -->
   <view class="hero">
+    <view class="hero__signature"><view class="mhp-ico mhp-ico--wand-sparkles"></view></view>
+    <view class="mhp-page-kicker"><view class="mhp-page-kicker__dot"></view><text>安心整理 · 自主掌控</text></view>
     <text class="hero__title">{{copy.title}}</text>
     <text class="hero__sub">{{copy.intro}}</text>
   </view>
 
+  <view class="modes" aria-role="radiogroup" aria-label="AI 助手模式">
+    <view
+      class="mode {{mode === 'organize' ? 'is-active' : ''}}"
+      data-mode="organize"
+      bindtap="onSwitchMode"
+      aria-role="radio"
+      aria-checked="{{mode === 'organize'}}"
+      aria-label="{{copy.modeOrganize}}"
+    >
+      <text class="mode__label">{{copy.modeOrganize}}</text>
+    </view>
+    <view
+      class="mode {{mode === 'consult' ? 'is-active' : ''}}"
+      data-mode="consult"
+      bindtap="onSwitchMode"
+      aria-role="radio"
+      aria-checked="{{mode === 'consult'}}"
+      aria-label="{{copy.modeConsult}}"
+    >
+      <text class="mode__label">{{copy.modeConsult}}</text>
+    </view>
+    <view
+      class="mode {{mode === 'interview' ? 'is-active' : ''}}"
+      data-mode="interview"
+      bindtap="onSwitchMode"
+      aria-role="radio"
+      aria-checked="{{mode === 'interview'}}"
+      aria-label="{{copy.modeInterview}}"
+    >
+      <text class="mode__label">{{copy.modeInterview}}</text>
+    </view>
+  </view>
+  <text class="mode__description">{{mode === 'organize' ? copy.modeOrganizeHint : mode === 'consult' ? copy.modeConsultHint : copy.modeInterviewHint}}</text>
+
   <view class="statusbar statusbar--{{aiStatus}}">
+    <view class="statusbar__dot"></view>
     <text class="statusbar__text">{{aiStatusText}}</text>
     <view class="statusbar__actions">
       <text
@@ -22,53 +59,24 @@
   </view>
 
   <view class="safety">
+    <view class="safety__header"><view class="mhp-ico mhp-ico--info safety__icon"></view><text>就医安全提示</text></view>
     <text class="safety__text">{{safetyFixed}}</text>
     <text class="safety__text">{{notDiagnosis}}</text>
   </view>
 
-  <view class="modes">
-    <view
-      class="mode {{mode === 'organize' ? 'is-active' : ''}}"
-      data-mode="organize"
-      bindtap="onSwitchMode"
-      aria-role="radio"
-      aria-checked="{{mode === 'organize'}}"
-      aria-label="{{copy.modeOrganize}}"
-    >
-      <text class="mode__label">{{copy.modeOrganize}}</text>
-      <text class="mode__hint">{{copy.modeOrganizeHint}}</text>
-    </view>
-    <view
-      class="mode {{mode === 'consult' ? 'is-active' : ''}}"
-      data-mode="consult"
-      bindtap="onSwitchMode"
-      aria-role="radio"
-      aria-checked="{{mode === 'consult'}}"
-      aria-label="{{copy.modeConsult}}"
-    >
-      <text class="mode__label">{{copy.modeConsult}}</text>
-      <text class="mode__hint">{{copy.modeConsultHint}}</text>
-    </view>
-    <view
-      class="mode {{mode === 'interview' ? 'is-active' : ''}}"
-      data-mode="interview"
-      bindtap="onSwitchMode"
-      aria-role="radio"
-      aria-checked="{{mode === 'interview'}}"
-      aria-label="{{copy.modeInterview}}"
-    >
-      <text class="mode__label">{{copy.modeInterview}}</text>
-      <text class="mode__hint">{{copy.modeInterviewHint}}</text>
-    </view>
-  </view>
-
   <view class="compose">
+    <view class="compose__heading">
+      <view class="compose__identity"><view class="mhp-ico mhp-ico--wand-sparkles"></view></view>
+      <view class="compose__heading-copy"><text class="compose__title">告诉我你想整理什么</text><text class="compose__caption">内容由你决定，发送前可再次确认</text></view>
+    </view>
     <textarea
       class="compose__area"
       value="{{input}}"
       placeholder="{{copy.placeholder}}"
+        placeholder-style="{{highContrast ? 'color:#FFFFFF' : 'color:#5A7068'}}"
       bindinput="onInput"
       maxlength="-1"
+      aria-label="AI 助手输入内容"
     />
 
     <view class="memory">
@@ -133,18 +141,23 @@
     </view>
   </view>
 
-  <view class="preview" wx:if="{{previewOpen}}">
-    <text class="preview__title">{{copy.previewTitle}}</text>
-    <text class="preview__intro">{{copy.previewIntro}}</text>
-    <view class="preview__section" wx:for="{{previewSections}}" wx:key="key">
-      <text class="preview__section-title">{{item.title}}</text>
-      <text class="preview__section-text">{{item.text}}</text>
-    </view>
-    <text class="preview__notice" wx:if="{{previewMemoryNotice}}">{{previewMemoryNotice}}</text>
-    <text class="preview__notice" wx:if="{{previewDemoNotice}}">{{previewDemoNotice}}</text>
-    <view class="preview__actions">
-      <view class="btn btn--primary" bindtap="onConfirmSend" aria-role="button" aria-label="{{copy.previewConfirm}}">{{copy.previewConfirm}}</view>
-      <view class="btn btn--ghost" bindtap="onCancelPreview" aria-role="button" aria-label="{{copy.previewCancel}}">{{copy.previewCancel}}</view>
+  <!-- 发送前确认属于阻断流程：内容独立滚动，操作始终留在可见区域。 -->
+  <view class="preview" wx:if="{{previewOpen}}" aria-role="dialog" aria-label="{{copy.previewTitle}}">
+    <view class="preview__panel">
+      <scroll-view class="preview__scroll" scroll-y enhanced="{{true}}">
+        <text class="preview__title">{{copy.previewTitle}}</text>
+        <text class="preview__intro">{{copy.previewIntro}}</text>
+        <view class="preview__section" wx:for="{{previewSections}}" wx:key="key">
+          <text class="preview__section-title">{{item.title}}</text>
+          <text class="preview__section-text">{{item.text}}</text>
+        </view>
+        <text class="preview__notice" wx:if="{{previewMemoryNotice}}">{{previewMemoryNotice}}</text>
+        <text class="preview__notice" wx:if="{{previewDemoNotice}}">{{previewDemoNotice}}</text>
+      </scroll-view>
+      <view class="preview__actions">
+        <view class="btn btn--primary" bindtap="onConfirmSend" aria-role="button" aria-label="{{copy.previewConfirm}}">{{copy.previewConfirm}}</view>
+        <view class="btn btn--ghost" bindtap="onCancelPreview" aria-role="button" aria-label="{{copy.previewCancel}}">{{copy.previewCancel}}</view>
+      </view>
     </view>
   </view>
 
@@ -159,6 +172,7 @@
         data-field="name"
         bindinput="onDraftInput"
         maxlength="60"
+        aria-label="资料草稿名称"
       />
     </view>
     <view class="field">
@@ -169,6 +183,7 @@
         data-field="excerpt"
         bindinput="onDraftInput"
         maxlength="-1"
+        aria-label="资料草稿摘录"
       />
     </view>
     <view class="field">
@@ -179,6 +194,7 @@
         data-field="remark"
         bindinput="onDraftInput"
         maxlength="300"
+        aria-label="资料草稿备注"
       />
     </view>
     <text class="draft__hint" wx:if="{{draftHint}}">{{draftHint}}</text>
@@ -199,6 +215,7 @@
         data-field="text"
         bindinput="onInterviewDraftInput"
         maxlength="-1"
+        aria-label="问诊记录描述"
       />
     </view>
     <view class="field">
@@ -209,6 +226,7 @@
         data-field="occurredAt"
         bindinput="onInterviewDraftInput"
         maxlength="40"
+        aria-label="症状发生时间"
       />
     </view>
     <view class="field">
@@ -219,6 +237,7 @@
         data-field="duration"
         bindinput="onInterviewDraftInput"
         maxlength="40"
+        aria-label="症状持续时长"
       />
     </view>
     <view class="field">
@@ -229,6 +248,7 @@
         data-field="impact"
         bindinput="onInterviewDraftInput"
         maxlength="60"
+        aria-label="症状影响"
       />
     </view>
     <view class="field">
@@ -239,6 +259,7 @@
         data-field="tags"
         bindinput="onInterviewDraftInput"
         maxlength="60"
+        aria-label="症状标签"
       />
     </view>
     <text class="draft__hint" wx:if="{{interviewDraftHint}}">{{interviewDraftHint}}</text>

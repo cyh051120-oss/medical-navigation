@@ -84,7 +84,7 @@ node scripts/export-source-material.mjs
 | 材料 | 来源 | 状态 |
 | --- | --- | --- |
 | 软件著作权登记申请表 | 中国版权保护中心在线填报 | 待你填报 |
-| 源程序（前 30 页 + 后 30 页，连续，每页 ≥50 行） | `artifacts/soft-copyright/source-listing-60pages.txt`（前 30 + 后 30 页）与全量 `source-listing.txt`（135 文件 / 19,551 行 / 397 页，见 `source-material.json`）。打印成 PDF 即可提交 | **已重生成**（2026-10-07） |
+| 源程序（前 30 页 + 后 30 页，连续，每页 ≥50 行） | `artifacts/soft-copyright/source-listing-60pages.txt`（前 30 + 后 30 页）与全量 `source-listing.txt`（134 文件 / 19,964 行 / 405 页，见 `source-material.json`；不含测试用 `server/mock-upstream.mjs`）。打印前需核对最终版式 | **已重生成**（2026-10-19；见第十二节） |
 | 软件说明书（操作手册） | `docs/USER-MANUAL.md`（含界面截图；张数以手册内为准） | **已完成** |
 | 项目开发计划书 | `docs/PROJECT-PLAN.md` | **已完成** |
 | 功能清单 | `docs/FEATURE-LIST.md` | 已有 |
@@ -269,6 +269,39 @@ devtools automation endpoint ws://127.0.0.1:9420 never came up within 90000ms
 | `artifacts/soft-copyright/source-material.json`（及 `source-listing*.txt`） | 源码新增 workspace 与各 `view/` 目录，文件数/行数/页数变化 | 已于 2026-10-07 重跑 `node scripts/export-source-material.mjs`（135 文件 / 19,551 行 / 397 页） |
 
 上述截图与源码材料**已于 2026-10-07 重生成**：截图 22 张（含 workspace 条目，双跑逐张字节一致）；源码材料 135 文件 / 19,551 行 / 397 页；以重生成后的 `index.json` / `source-material.json` 为准。
+
+
+---
+
+## 十一、手机工作台前端改版后的材料状态（2026-10-18）
+
+新版默认启动页采用**底部五入口导航**（首页 / 记录 / 摘要 / AI / 我的）；记录页包含症状、资料、待问，
+我的包含档案和设置；8 个原路由继续兼容深链。
+
+**新截图已重新生成并正式替换（2026-10-18）**：`artifacts/screenshots/soft-copyright/` 共有 **22 张 PNG**，
+包含 8 个正式功能区的 14 / 32 字号、AI 问诊建议模式，以及默认工作台/设置深链入口的兼容索引截图。
+两轮独立采集结果 22/22 SHA256 完全一致，所有 PNG 有效并与 `artifacts/screenshots/index.json`
+所记 Git `bce5c6b` 匹配；截图均来自新版五入口工作台。第二轮拍摄中一次截图超时，恢复时
+逐张核验此前 18 张哈希，再补拍余下四张，因此没有将半套图片误发布。历史 2026-10-07 截图
+及原索引保留在 `artifacts/screenshots/.soft-archive-*/`，未重写旧验收事实。
+
+**未更新的材料与未验收范围**：`artifacts/soft-copyright/source-listing*.txt`、`source-material.json`
+仍是 2026-10-07 旧源码材料，需在正式送审前按新版 `main` 重新导出并校对。
+本次验证的是截图渲染及重复性，**没有证明主次导航点击、数据增删改、AI 发送确认、真实设备安全区和长文本滚动等交互**。
+正式递交软著材料前仍须检查文档版式、图片可读性与材料完整性。
+详见 `docs/前端改版验收记录-2026-10-18.md`。
+
+---
+
+## 十二、采集表内容与源码材料同步（2026-10-19）
+
+- 基线：本地主线 `bce5c6b` 的产品源码；当前工作区的其他既有修改保留。本节是后续更新，不改写前述各日期的历史证据。
+- 导出范围：`scripts/export-source-material.mjs` 新增排除测试用模拟上游 `server/mock-upstream.mjs`；原有测试目录、工程脚本、本地配置及示例配置仍不在导出范围内。
+- 已重新生成 `artifacts/soft-copyright/source-material.json`、`source-listing.txt`、`source-listing-60pages.txt`。索引为 **134 文件 / 19,964 源码行 / 405 全量清单页**，摘取前后各 30 页，共 60 页；行数按导出脚本的文本行口径统计，清单页另含文件分隔信息。
+- 采集表源码量与本次索引统一；语言栏按提交的产品源码选择 TypeScript、WXML、WXSS，取消仅测试模拟服务使用的 JavaScript 勾选。
+- 技术特点分别说明对话及追问的发送前脱敏预览确认、由独立开关控制并提前告知的自动记忆提炼，以及仅开发环境提供的本地固定内容演示。
+- 以上是材料生成与静态内容核对，不代表产品测试、真机流程或最终申报验收通过。权利归属、开发方式、开发完成日期及发表状态仍需依据实际协议和项目事实确认。
+- `artifacts/` 不入库，跨机器递交时需一并复制本次源码材料。
 
 ---
 

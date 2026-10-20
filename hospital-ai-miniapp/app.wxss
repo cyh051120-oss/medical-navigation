@@ -28,6 +28,17 @@ page {
    settings.wxss 保留 `.settings.is-hc` 等价作用域块以兼容既有契约（值相同）。 */
 .is-hc {
   --bg-main: var(--mhp-hc-bg);
+  --bg-accent: var(--mhp-hc-surface);
+  --bg-input: var(--mhp-hc-bg);
+  --bg-warm: var(--mhp-hc-surface);
+  --bg-elevated: var(--mhp-hc-surface);
+  --surface-action: var(--mhp-hc-accent);
+  --color-on-action: var(--mhp-hc-bg);
+  --color-on-primary: var(--mhp-hc-bg);
+  --color-decoration: var(--mhp-hc-accent);
+  --color-warm: var(--mhp-hc-accent);
+  --border-strong: var(--mhp-hc-border);
+  --border-subtle: var(--mhp-hc-border);
   --bg-card: var(--mhp-hc-surface);
   --text-title: var(--mhp-hc-text);
   --text-body: var(--mhp-hc-text);
@@ -39,7 +50,7 @@ page {
 }
 
 /* ===========================================================================
-   左侧导航栏布局（前端重构）。
+   兼容路由页的左侧导航栏布局；正式 workspace 启动页已改为底部导航。
    8 个页面根节点加 `.app-shell`，并带 `{{sidebarCollapsed ? 'is-collapsed' : ''}}`；
    侧栏组件（app-sidebar）固定定位，页面根节点用 margin-left: var(--mhp-sidebar-w)
    为其让位——页面背景与 page 背景同色，故左侧让位区无可见接缝。
@@ -80,23 +91,23 @@ page {
   background: var(--bg-main);
 }
 
-/* 徽标随字号缩放，保证内部图标（calc(48rpx * scale)）在大字档仍被圆形容纳
-   （原先固定 108rpx，scale≥2.25 时图标溢出圆外）。 */
+/* 空状态徽标是装饰尺寸，不是文字；随 layoutScale 有限放大（最高 1.2）。
+   正文仍随 --mhp-scale 全量缩放，避免 32 字号下巨型徽标占掉可操作区域。 */
 .mhp-empty__badge {
-  width: calc(108rpx * var(--mhp-scale));
-  height: calc(108rpx * var(--mhp-scale));
+  width: calc(108rpx * var(--mhp-layout-scale));
+  height: calc(108rpx * var(--mhp-layout-scale));
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
-  color: var(--bg-card);
-  background: var(--color-primary);
+  border-radius: var(--radius-lg);
+  color: var(--color-primary);
+  background: var(--bg-accent);
   opacity: 0.9;
 }
 
 .mhp-empty__badge .mhp-ico {
-  width: calc(48rpx * var(--mhp-scale));
-  height: calc(48rpx * var(--mhp-scale));
+  width: calc(48rpx * var(--mhp-layout-scale));
+  height: calc(48rpx * var(--mhp-layout-scale));
 }
 
 .mhp-empty__text {
@@ -170,4 +181,137 @@ page {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* 全页面同一组操作语义：代替各功能区重复的 btn CSS。 */
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 88rpx;
+  padding: var(--mhp-space-4) var(--mhp-space-6);
+  border: 2rpx solid transparent;
+  border-radius: var(--radius-md);
+  text-align: center;
+  font-size: calc(28rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-body);
+  font-weight: var(--mhp-fw-semibold);
+}
+
+.btn--primary {
+  color: var(--color-on-primary);
+  background: var(--color-primary);
+  box-shadow: var(--shadow-neon);
+}
+
+.btn--ghost {
+  font-size: calc(24rpx * var(--mhp-scale));
+  color: var(--color-primary);
+  background: var(--bg-accent);
+  border-color: transparent;
+}
+
+.btn--danger {
+  font-size: calc(24rpx * var(--mhp-scale));
+  color: var(--color-danger);
+  background: var(--bg-warm);
+  border-color: transparent;
+}
+
+.is-hc .btn--primary {
+  color: var(--mhp-hc-bg);
+  box-shadow: none;
+}
+
+/* 字号放大时重组同行字段和工具栏，而非强行把控件缩小或截断。 */
+.is-large-text .hero {
+  flex-wrap: wrap;
+}
+
+.is-large-text .hero__add {
+  margin-left: 0;
+}
+
+.is-large-text .tl-card__head,
+.is-large-text .toolbar,
+.is-large-text .statusbar,
+.is-large-text .row__head {
+  flex-wrap: wrap;
+}
+
+.is-large-text .modes {
+  flex-direction: column;
+}
+
+.is-large-text .compose__actions,
+.is-large-text .select__tools,
+.is-large-text .preview__actions,
+.is-large-text .poster__actions,
+.is-large-text .editor__actions {
+  flex-wrap: wrap;
+}
+
+.is-large-text .settings .row,
+.settings.is-large-text .row {
+  flex-wrap: wrap;
+}
+
+/* 独立路由页的根节点同时是 section 和字号态，不属于自己的后代。 */
+.is-large-text .select__head,
+.brief.is-large-text .select__head,
+.is-large-text .note__head,
+.notes.is-large-text .note__head,
+.is-large-text .mem-item,
+.settings.is-large-text .mem-item {
+  flex-wrap: wrap;
+}
+
+.is-large-text .brief .select > .row,
+.brief.is-large-text .select > .row {
+  flex-wrap: wrap;
+}
+
+/* 编辑区与只读正文的差异必须可见，尤其个人档案的单行输入。 */
+.field__input,
+.field__area,
+.field__textarea,
+.compose__area,
+.editor__area,
+.picker,
+.mem-form__input {
+  border: 2rpx solid var(--border-subtle);
+  background: var(--bg-input);
+  border-radius: var(--radius-sm);
+}
+
+/* 占位提示跟随语义色：高对比下不沿用系统默认深灰。 */
+.mhp-placeholder {
+  color: var(--text-caption);
+}
+
+/* Page grammar for journal sections and user-focused screens. */
+.mhp-page-kicker {
+  display: flex;
+  align-items: center;
+  gap: var(--mhp-space-3);
+  margin-bottom: var(--mhp-space-4);
+  font-size: calc(23rpx * var(--mhp-scale));
+  font-weight: var(--mhp-fw-semibold);
+  letter-spacing: 1rpx;
+  line-height: var(--mhp-lh-caption);
+  color: var(--color-primary);
+}
+.mhp-page-kicker__dot {
+  width: 12rpx;
+  height: 12rpx;
+  flex: none;
+  border-radius: 50%;
+  background: var(--color-primary);
+}
+.hero__add-plus {
+  display: inline-block;
+  margin-right: var(--mhp-space-2);
+  font-size: calc(28rpx * var(--mhp-scale));
+  font-weight: var(--mhp-fw-semibold);
 }

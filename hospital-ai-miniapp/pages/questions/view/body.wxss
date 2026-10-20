@@ -46,31 +46,37 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
   min-height: 88rpx;
-  padding: var(--mhp-space-4) var(--mhp-space-8);
-  border-radius: var(--radius-xl);
+  padding: var(--mhp-space-2) var(--mhp-space-5);
+  border-radius: var(--radius-sm);
   font-size: calc(28rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-body);
   font-weight: var(--mhp-fw-semibold);
   color: var(--bg-card);
   background: var(--color-primary);
-  box-shadow: var(--shadow-neon);
 }
 
 /* ----- 进度与分组统计 ----- */
 
 .progress {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--mhp-space-5);
+  padding: var(--mhp-space-4) var(--mhp-space-6);
   margin-bottom: var(--mhp-space-5);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  border: 2rpx solid var(--border-subtle);
 }
 
 .progress__item {
   flex: 1;
-  padding: var(--mhp-space-6) var(--mhp-space-6);
-  border-radius: var(--radius-md);
-  background: var(--bg-card);
-  box-shadow: var(--shadow-sm);
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--mhp-space-2);
 }
 
 /* display value (not a text tier) */
@@ -92,11 +98,11 @@
 }
 
 .stats {
+  margin-top: var(--mhp-space-6);
   padding: var(--mhp-space-5) var(--mhp-space-6);
-  margin-bottom: var(--mhp-space-5);
   border-radius: var(--radius-md);
   background: var(--bg-card);
-  box-shadow: var(--shadow-sm);
+  border: 2rpx solid var(--border-subtle);
 }
 
 .stats__title {
@@ -347,7 +353,7 @@
   margin-bottom: var(--mhp-space-6);
   border-radius: var(--radius-md);
   background: var(--bg-card);
-  box-shadow: var(--shadow-sm);
+  border: 2rpx solid var(--border-subtle);
 }
 
 .q__main {
@@ -460,47 +466,47 @@
   margin-top: var(--mhp-space-5);
 }
 
+.q__actions .btn {
+  padding: var(--mhp-space-2) var(--mhp-space-5);
+  background: transparent;
+  border-color: transparent;
+}
+
+
 /* ----- 通用按钮 ----- */
 
 /* body tier */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 88rpx;
-  padding: var(--mhp-space-5) var(--mhp-space-8);
-  border-radius: var(--radius-md);
-  text-align: center;
-  font-size: calc(28rpx * var(--mhp-scale));
-  line-height: var(--mhp-lh-body);
-  font-weight: var(--mhp-fw-semibold);
-}
-
-.btn--primary {
-  color: var(--bg-card);
-  background: var(--color-primary);
-  box-shadow: var(--shadow-neon);
-}
-
-/* caption tier */
-.btn--ghost {
-  padding: var(--mhp-space-4) var(--mhp-space-7);
-  font-size: calc(24rpx * var(--mhp-scale));
-  line-height: var(--mhp-lh-caption);
-  color: var(--color-primary);
-  background: var(--bg-card);
-  box-shadow: var(--shadow-sm);
-}
-
-.btn--danger {
-  padding: var(--mhp-space-4) var(--mhp-space-7);
-  font-size: calc(24rpx * var(--mhp-scale));
-  line-height: var(--mhp-lh-caption);
-  color: var(--color-danger);
-  background: var(--bg-card);
-  border: 2rpx solid var(--color-danger);
-}
+/* 按钮样式由 app.wxss 统一提供。 */
 
 .questions.is-hc .btn--primary {
   color: var(--mhp-hc-bg);
 }
+
+/* Health Journal visual layer: shared semantic tokens, page-specific composition. */
+
+.hero { padding-top: var(--mhp-space-7); padding-bottom: var(--mhp-space-8); }
+.hero__title { font-size: calc(43rpx * var(--mhp-scale)); letter-spacing: -1rpx; }
+.hero__sub { margin-top: var(--mhp-space-3); }
+.hero__add {
+  gap: var(--mhp-space-1);
+  border-radius: var(--radius-xl);
+  padding: var(--mhp-space-3) var(--mhp-space-6);
+  color: var(--color-on-primary);
+  box-shadow: var(--shadow-neon);
+}
+.editor {
+  border: 2rpx solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+}
+.field__input, .field__area, .picker {
+  background: var(--bg-input);
+  border: 2rpx solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+.editor__head {
+  padding-bottom: var(--mhp-space-4);
+  border-bottom: 2rpx solid var(--border-subtle);
+}
+.editor__title { color: var(--text-title); }
+.editor__close { color: var(--color-primary); }

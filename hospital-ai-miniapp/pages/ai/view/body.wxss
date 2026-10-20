@@ -119,28 +119,33 @@
 .modes {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--mhp-space-4);
-  margin-bottom: var(--mhp-space-5);
+  gap: var(--mhp-space-2);
+  margin-bottom: var(--mhp-space-2);
+  padding: var(--mhp-space-2);
+  border: 2rpx solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
 }
 
 .mode {
   flex: 1;
-  padding: var(--mhp-space-5) var(--mhp-space-6);
-  border-radius: var(--radius-md);
-  background: var(--bg-card);
-  box-shadow: var(--shadow-sm);
+  min-width: 0;
+  padding: var(--mhp-space-4) var(--mhp-space-2);
+  border-radius: var(--radius-sm);
+  background: transparent;
   border: 2rpx solid transparent;
+  text-align: center;
 }
 
 .mode.is-active {
-  border-color: var(--color-primary);
-  box-shadow: var(--shadow-neon);
+  background: var(--bg-accent);
+  border-color: var(--border-subtle);
 }
 
 /* section title tier */
 .mode__label {
   display: block;
-  font-size: calc(32rpx * var(--mhp-scale));
+  font-size: calc(28rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-title);
   font-weight: var(--mhp-fw-semibold);
   color: var(--text-title);
@@ -150,10 +155,10 @@
   color: var(--color-primary);
 }
 
-/* caption tier */
-.mode__hint {
+/* 只解释当前选中的模式；三个选项不再堆叠重复说明。 */
+.mode__description {
   display: block;
-  margin-top: var(--mhp-space-2);
+  margin: var(--mhp-space-2) var(--mhp-space-3) var(--mhp-space-6);
   font-size: calc(24rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-caption);
   color: var(--text-caption);
@@ -166,7 +171,7 @@
   margin-bottom: var(--mhp-space-6);
   border-radius: var(--radius-lg);
   background: var(--bg-card);
-  box-shadow: var(--shadow-md);
+  border: 2rpx solid var(--border-subtle);
 }
 
 /* body tier */
@@ -382,12 +387,32 @@
 /* ----- 发送前预览 ----- */
 
 .preview {
-  padding: var(--mhp-space-7) var(--mhp-space-7) var(--mhp-space-7);
-  margin-bottom: var(--mhp-space-6);
-  border-radius: var(--radius-lg);
-  background: var(--bg-card);
-  box-shadow: var(--shadow-md);
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: var(--mhp-space-7);
+  background: rgba(0, 0, 0, 0.48);
+}
+
+.preview__panel {
+  box-sizing: border-box;
+  width: 100%;
   border: 2rpx solid var(--color-primary);
+  border-radius: var(--radius-lg);
+  padding: var(--mhp-space-6);
+  background: var(--bg-card);
+}
+
+.preview__scroll {
+  /* Fixed viewport budget leaves the confirm/cancel buttons visible when content is long. */
+  height: 55vh;
 }
 
 /* section title tier */
@@ -438,8 +463,10 @@
 
 .preview__actions {
   display: flex;
-  gap: var(--mhp-space-5);
-  margin-top: var(--mhp-space-6);
+  flex-wrap: wrap;
+  gap: var(--mhp-space-4);
+  padding-top: var(--mhp-space-5);
+  border-top: 2rpx solid var(--border-subtle);
 }
 
 .preview__actions .btn {
@@ -566,11 +593,12 @@
   margin-bottom: var(--mhp-space-5);
   border-radius: var(--radius-md);
   background: var(--bg-card);
-  box-shadow: var(--shadow-sm);
+  border: 2rpx solid var(--border-subtle);
 }
 
 .turn--user {
-  background: var(--bg-main);
+  margin-left: var(--mhp-space-7);
+  background: var(--bg-accent);
 }
 
 /* body tier */
@@ -671,35 +699,137 @@
 /* ----- 通用按钮 ----- */
 
 /* body tier */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 88rpx;
-  padding: var(--mhp-space-5) var(--mhp-space-8);
-  border-radius: var(--radius-md);
-  text-align: center;
-  font-size: calc(28rpx * var(--mhp-scale));
-  line-height: var(--mhp-lh-body);
-  font-weight: var(--mhp-fw-semibold);
-}
-
-.btn--primary {
-  color: var(--bg-card);
-  background: var(--color-primary);
-  box-shadow: var(--shadow-neon);
-}
-
-/* caption tier */
-.btn--ghost {
-  padding: var(--mhp-space-4) var(--mhp-space-7);
-  font-size: calc(24rpx * var(--mhp-scale));
-  line-height: var(--mhp-lh-caption);
-  color: var(--color-primary);
-  background: var(--bg-card);
-  box-shadow: var(--shadow-sm);
-}
+/* 按钮样式由 app.wxss 统一提供。 */
 
 .ai.is-hc .btn--primary {
   color: var(--mhp-hc-bg);
 }
+
+/* Health Journal visual layer: shared semantic tokens, page-specific composition. */
+
+/* The assistant is a calm conversation surface rather than a stack of forms. */
+.hero {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: var(--mhp-space-5);
+  padding: var(--mhp-space-7) var(--mhp-space-7) var(--mhp-space-8);
+  border: 2rpx solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  background: var(--bg-accent);
+}
+.hero__signature {
+  position: absolute;
+  top: var(--mhp-space-6);
+  right: var(--mhp-space-6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(80rpx * var(--mhp-layout-scale));
+  height: calc(80rpx * var(--mhp-layout-scale));
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  color: var(--color-primary);
+  opacity: 0.72;
+}
+.hero__signature .mhp-ico { width: 42rpx; height: 42rpx; }
+.hero__title { font-size: calc(48rpx * var(--mhp-scale)); letter-spacing: -1rpx; }
+.hero__sub { max-width: 610rpx; }
+.modes {
+  padding: var(--mhp-space-2);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-sm);
+}
+.mode { min-height: 82rpx; box-sizing: border-box; display: flex; align-items: center; justify-content: center; }
+.mode.is-active {
+  background: var(--color-primary);
+  border-color: transparent;
+  box-shadow: var(--shadow-neon);
+}
+.mode.is-active .mode__label { color: var(--color-on-primary); }
+.mode__description { margin-bottom: var(--mhp-space-5); }
+.statusbar {
+  border: 2rpx solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: none;
+  background: var(--bg-card);
+}
+.statusbar__dot {
+  flex: none;
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 50%;
+  background: var(--text-caption);
+}
+.statusbar--ok .statusbar__dot { background: var(--color-success); }
+.statusbar--local .statusbar__dot,
+.statusbar--offline .statusbar__dot { background: var(--color-danger); }
+.statusbar--demo .statusbar__dot { background: var(--color-primary); }
+.safety {
+  padding: var(--mhp-space-5) var(--mhp-space-6);
+  border-radius: var(--radius-lg);
+  border-left: 5rpx solid var(--color-warm);
+  background: var(--bg-warm);
+  box-shadow: none;
+}
+.safety__header {
+  display: flex;
+  align-items: center;
+  gap: var(--mhp-space-3);
+  margin-bottom: var(--mhp-space-3);
+  font-size: calc(24rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-caption);
+  font-weight: var(--mhp-fw-semibold);
+  color: var(--color-warm);
+}
+.safety__icon { width: 30rpx; height: 30rpx; }
+.safety__text { font-size: calc(25rpx * var(--mhp-scale)); line-height: var(--mhp-lh-body); }
+.compose {
+  padding: var(--mhp-space-7);
+  border: 2rpx solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+}
+.compose__heading {
+  display: flex;
+  align-items: center;
+  gap: var(--mhp-space-4);
+  margin-bottom: var(--mhp-space-5);
+}
+.compose__identity {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 66rpx;
+  height: 66rpx;
+  border-radius: var(--radius-md);
+  background: var(--bg-accent);
+  color: var(--color-primary);
+}
+.compose__identity .mhp-ico { width: 34rpx; height: 34rpx; }
+.compose__heading-copy { display: flex; flex-direction: column; flex: 1; min-width: 0; gap: var(--mhp-space-1); }
+.compose__title {
+  font-size: calc(28rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-body);
+  font-weight: var(--mhp-fw-semibold);
+  color: var(--text-title);
+}
+.compose__caption {
+  font-size: calc(23rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-caption);
+  color: var(--text-caption);
+}
+.compose__area {
+  min-height: 220rpx;
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+}
+.turn { border-radius: var(--radius-lg); box-shadow: none; }
+.turn--user { background: var(--bg-accent); }
+.preview__panel { border-radius: var(--radius-xl); }
+/* Distinct HC selection without inherited illegible white on yellow. */
+.ai.is-hc .mode.is-active .mode__label,
+.is-hc .ai .mode.is-active .mode__label { color: var(--mhp-hc-bg); }
+.ai.is-large-text .hero__signature,
+.is-large-text .ai .hero__signature { opacity: 0.14; }

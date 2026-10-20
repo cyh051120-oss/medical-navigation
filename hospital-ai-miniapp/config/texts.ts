@@ -65,7 +65,7 @@ export const EMPTY = {
   symptoms: '还没有症状记录。',
   notes: '还没有资料摘录。',
   questions: '还没有待问问题。',
-  brief: '还没有可导出的内容，请先添加记录。',
+  brief: '暂无可选记录。可先添加记录生成摘要，也可以在下方直接手写并保存。',
   search: '没有找到相关内容。',
   aiDisabled: 'AI 助手尚未开启。你可以先用本地整理功能。',
 } as const;

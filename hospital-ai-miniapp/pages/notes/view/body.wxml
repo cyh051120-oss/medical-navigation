@@ -3,10 +3,11 @@
      根壳（.notes 的 class / inline scale 变量）与 <app-sidebar> 由宿主提供，不在此处。 -->
   <view class="hero">
     <view class="hero__text">
+      <view class="mhp-page-kicker"><view class="mhp-page-kicker__dot"></view><text>就医资料  /  02</text></view>
       <text class="hero__title">{{copy.title}}</text>
       <text class="hero__sub">{{copy.intro}}</text>
     </view>
-    <view class="hero__add" wx:if="{{!formOpen}}" bindtap="onAdd" aria-role="button" aria-label="{{buttons.add}}">{{buttons.add}}</view>
+    <view class="hero__add" wx:if="{{!formOpen}}" bindtap="onAdd" aria-role="button" aria-label="{{buttons.add}}"><text class="hero__add-plus">＋</text><text>{{buttons.add}}</text></view>
   </view>
 
   <view class="editor" wx:if="{{formOpen}}">
@@ -21,8 +22,10 @@
         class="field__input"
         value="{{form.name}}"
         placeholder="{{copy.namePlaceholder}}"
+        placeholder-class="mhp-placeholder"
         bindinput="onNameInput"
         maxlength="60"
+        aria-label="资料名称"
       />
     </view>
 
@@ -32,14 +35,16 @@
         class="field__area"
         value="{{form.excerpt}}"
         placeholder="{{copy.excerptPlaceholder}}"
+        placeholder-style="{{highContrast ? 'color:#FFFFFF' : 'color:#5A7068'}}"
         bindinput="onExcerptInput"
         maxlength="1000"
+        aria-label="资料摘录内容"
       />
     </view>
 
     <view class="field">
       <text class="field__label">{{copy.sourceDateLabel}}</text>
-      <picker mode="date" value="{{form.sourceDate}}" bindchange="onSourceDateChange">
+      <picker mode="date" value="{{form.sourceDate}}" bindchange="onSourceDateChange" aria-label="资料来源日期">
         <view class="picker">{{form.sourceDate || copy.sourceDatePlaceholder}}</view>
       </picker>
     </view>
@@ -50,8 +55,10 @@
         class="field__input"
         value="{{form.remark}}"
         placeholder="{{copy.remarkPlaceholder}}"
+        placeholder-class="mhp-placeholder"
         bindinput="onRemarkInput"
         maxlength="200"
+        aria-label="资料备注"
       />
     </view>
 
@@ -78,7 +85,7 @@
   <view class="list" wx:if="{{hasRecords}}">
     <view class="note" wx:for="{{rows}}" wx:key="id">
       <view class="note__head">
-        <text class="note__name">{{item.name}}</text>
+        <view class="note__heading"><view class="note__symbol"><view class="mhp-ico mhp-ico--file-text"></view></view><text class="note__name">{{item.name}}</text></view>
         <text class="note__date" wx:if="{{item.sourceDate}}">{{copy.sourceDateLabel}} {{item.sourceDate}}</text>
       </view>
       <text class="note__excerpt" wx:if="{{item.excerpt}}">{{item.excerpt}}</text>
@@ -100,7 +107,7 @@
       </view>
       <view class="note__stamp">
         <text class="note__stamp-item">{{copy.createdAtPrefix}} {{item.createdLabel}}</text>
-        <text class="note__stamp-item">{{copy.updatedAtPrefix}} {{item.updatedLabel}}</text>
+        <text class="note__stamp-item" wx:if="{{item.updatedLabel !== item.createdLabel}}">{{copy.updatedAtPrefix}} {{item.updatedLabel}}</text>
       </view>
       <view class="note__actions">
         <view class="btn btn--ghost" data-id="{{item.id}}" bindtap="onEdit" aria-role="button" aria-label="{{buttons.edit}} {{item.name}}">{{buttons.edit}}</view>
@@ -109,8 +116,8 @@
     </view>
   </view>
 
-  <view class="mhp-empty" wx:else>
+  <view class="mhp-empty" wx:elif="{{!formOpen}}">
     <view class="mhp-empty__badge"><view class="mhp-ico mhp-ico--file-text"></view></view>
     <text class="mhp-empty__text">{{emptyText}}</text>
-    <view class="btn btn--primary mhp-empty__action" bindtap="onAdd" aria-role="button" aria-label="{{buttons.add}}">{{buttons.add}}</view>
+
   </view>

@@ -33,56 +33,63 @@
 
 .profile-card {
   background: var(--bg-card);
+  border: 2rpx solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
-  padding: var(--mhp-space-3) var(--mhp-space-8);
-  margin-bottom: var(--mhp-space-7);
+  padding: var(--mhp-space-6) var(--mhp-space-7);
+  margin-bottom: var(--mhp-space-6);
+}
+
+.profile-card__title {
+  display: block;
+  font-size: calc(32rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-title);
+  font-weight: var(--mhp-fw-semibold);
+  color: var(--text-title);
 }
 
 .field {
-  display: flex;
-  align-items: center;
-  gap: var(--mhp-space-5);
-  padding: var(--mhp-space-6) 0;
-  border-bottom: 2rpx solid var(--bg-main);
+  display: block;
+  padding: var(--mhp-space-5) 0;
+  border-bottom: 2rpx solid var(--border-subtle);
 }
 
 .field:last-child {
   border-bottom: none;
+  padding-bottom: 0;
 }
 
 .field--block {
   display: block;
 }
 
-/* caption tier；最小列宽随字号缩放，避免「性别（可选）」在大字档溢出被挤扁同行控件 */
+/* 手机表单的字段名称始终单独占行，确保大字与长输入可读。 */
 .field__label {
-  flex: none;
-  min-width: calc(150rpx * var(--mhp-scale));
+  display: block;
+  width: auto;
+  min-width: 0;
+  margin-bottom: var(--mhp-space-3);
   font-size: calc(24rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-caption);
   color: var(--text-caption);
 }
 
-.field--block .field__label {
-  display: block;
-  width: auto;
-  min-width: 0;
-  margin-bottom: var(--mhp-space-4);
-}
-
 /* body tier；高度随字号缩放，避免固定高度在大字档裁切输入内容与光标 */
 .field__input {
-  flex: 1;
+  width: 100%;
   min-width: 0;
   min-height: calc(64rpx * var(--mhp-scale));
+  box-sizing: border-box;
+  padding: var(--mhp-space-3) var(--mhp-space-4);
+  border-radius: var(--radius-sm);
+  background: var(--bg-main);
   font-size: calc(28rpx * var(--mhp-scale));
   line-height: var(--mhp-lh-body);
   color: var(--text-body);
 }
 
 .field__picker {
-  flex: 1;
+  width: 100%;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   min-height: 88rpx;
@@ -92,6 +99,7 @@
   line-height: var(--mhp-lh-body);
   color: var(--text-caption);
   background: var(--bg-main);
+  border: 2rpx solid var(--border-subtle);
 }
 
 .field__picker.is-filled {
@@ -100,7 +108,7 @@
 
 .gender {
   display: flex;
-  flex: 1;
+  width: 100%;
   gap: var(--mhp-space-5);
 }
 
@@ -117,12 +125,13 @@
   line-height: var(--mhp-lh-body);
   color: var(--text-body);
   background: var(--bg-main);
+  border: 2rpx solid var(--border-subtle);
 }
 
 .gender__btn.is-active {
   color: var(--bg-card);
   background: var(--color-primary);
-  box-shadow: var(--shadow-sm);
+  border-color: var(--color-primary);
 }
 
 .field__textarea {
@@ -144,26 +153,7 @@
 }
 
 /* body tier */
-.btn {
-  padding: var(--mhp-space-6) 0;
-  border-radius: var(--radius-md);
-  text-align: center;
-  font-size: calc(28rpx * var(--mhp-scale));
-  line-height: var(--mhp-lh-body);
-  font-weight: var(--mhp-fw-semibold);
-}
-
-.btn--primary {
-  color: var(--bg-card);
-  background: var(--color-primary);
-  box-shadow: var(--shadow-neon);
-}
-
-.btn--danger {
-  color: var(--color-danger);
-  background: var(--bg-card);
-  border: 2rpx solid var(--color-danger);
-}
+/* 统一按钮样式来自 app.wxss，避免多个功能区重复声明。 */
 
 .profile-meta {
   margin-top: var(--mhp-space-7);
@@ -191,3 +181,46 @@
   line-height: var(--mhp-lh-caption);
   color: var(--text-body);
 }
+
+/* Health Journal visual layer: shared semantic tokens, page-specific composition. */
+
+.profile-hero {
+  position: relative;
+  overflow: hidden;
+  border: 2rpx solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  background: var(--bg-accent);
+  padding: var(--mhp-space-7) var(--mhp-space-8) var(--mhp-space-8);
+  margin-bottom: var(--mhp-space-6);
+}
+.profile-hero__mark {
+  position: absolute;
+  top: var(--mhp-space-6);
+  right: var(--mhp-space-7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(78rpx * var(--mhp-layout-scale));
+  height: calc(78rpx * var(--mhp-layout-scale));
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  color: var(--color-primary);
+  opacity: 0.78;
+}
+.profile-hero__mark .mhp-ico { width: 40rpx; height: 40rpx; }
+.profile-hero__title { font-size: calc(46rpx * var(--mhp-scale)); letter-spacing: -1rpx; }
+.profile-card {
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  padding: var(--mhp-space-7) var(--mhp-space-8);
+}
+.profile-card__title { margin-bottom: var(--mhp-space-2); }
+.field { border-bottom-color: var(--border-subtle); }
+.field__input, .field__textarea, .field__picker, .gender__btn {
+  background: var(--bg-input);
+  border-radius: var(--radius-md);
+}
+.field__input, .field__textarea { padding: var(--mhp-space-5) var(--mhp-space-6); }
+.gender__btn.is-active { color: var(--color-on-primary); }
+.profile.is-large-text .profile-hero__mark,
+.is-large-text .profile .profile-hero__mark { opacity: 0.16; }

@@ -2,7 +2,7 @@
      重构后本页为薄 wrapper：根壳（.ai + app-shell + is-hc/is-collapsed + inline scale）
      ＋ 全局侧栏 ＋ include 共享主体 view/body.wxml（与 workspace section 共用）。
      无障碍：根节点内联 --mhp-scale / --mhp-layout-scale 与 is-hc，消费任务 16 的全局缩放/高对比机制。 -->
-<view class="ai app-shell {{highContrast ? 'is-hc' : ''}} {{sidebarCollapsed ? 'is-collapsed' : ''}}" style="--mhp-scale: {{scale}}; --mhp-layout-scale: {{layoutScale}}">
+<view class="ai app-shell {{highContrast ? 'is-hc' : ''}} {{scale >= 1.5 ? 'is-large-text' : ''}} {{sidebarCollapsed ? 'is-collapsed' : ''}}" style="--mhp-scale: {{scale}}; --mhp-layout-scale: {{layoutScale}}">
   <app-sidebar current="ai" collapsed="{{sidebarCollapsed}}" scale="{{scale}}" bind:toggle="onSidebarToggle" />
 
   <include src="./view/body.wxml"/>

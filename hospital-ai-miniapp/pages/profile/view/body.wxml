@@ -2,26 +2,31 @@
      双宿主共享：wrapper 页与 workspace section 组件都 include 本文件；
      根壳（.profile 的 class / inline scale 变量）与 <app-sidebar> 由宿主提供，不在此处。 -->
   <view class="profile-hero">
+    <view class="profile-hero__mark"><view class="mhp-ico mhp-ico--user"></view></view>
+    <view class="mhp-page-kicker"><view class="mhp-page-kicker__dot"></view><text>我的健康档案</text></view>
     <text class="profile-hero__title">个人档案</text>
     <text class="profile-hero__sub">资料只保存在本机，可随时修改或清除</text>
   </view>
 
   <view class="profile-card">
+    <text class="profile-card__title">基本信息</text>
     <view class="field">
       <text class="field__label">称呼</text>
       <input
         class="field__input"
         placeholder="例如：李阿姨"
+        placeholder-class="mhp-placeholder"
         value="{{form.name}}"
         data-key="name"
         bindinput="onFieldInput"
         maxlength="20"
+        aria-label="称呼"
       />
     </view>
 
     <view class="field">
       <text class="field__label">年龄段</text>
-      <picker mode="selector" range="{{ageRanges}}" value="{{ageRangeIndex}}" bindchange="onAgeRangeChange">
+      <picker mode="selector" range="{{ageRanges}}" value="{{ageRangeIndex}}" bindchange="onAgeRangeChange" aria-label="年龄段">
         <view class="field__picker {{form.ageRange ? 'is-filled' : ''}}">
           {{form.ageRange ? form.ageRange : ageRangePlaceholder}}
         </view>
@@ -30,7 +35,7 @@
 
     <view class="field">
       <text class="field__label">性别（可选）</text>
-      <view class="gender">
+      <view class="gender" aria-role="radiogroup" aria-label="性别，可选">
         <view
           wx:for="{{genderOptions}}"
           wx:key="value"
@@ -48,16 +53,19 @@
   </view>
 
   <view class="profile-card">
+    <text class="profile-card__title">健康情况</text>
     <view class="field field--block">
       <text class="field__label">过敏</text>
       <textarea
         class="field__textarea"
         placeholder="药物或食物过敏，如：青霉素"
+        placeholder-style="{{highContrast ? 'color:#FFFFFF' : 'color:#5A7068'}}"
         value="{{form.allergies}}"
         data-key="allergies"
         bindinput="onFieldInput"
         maxlength="200"
         auto-height
+        aria-label="过敏信息"
       />
     </view>
 
@@ -66,11 +74,13 @@
       <textarea
         class="field__textarea"
         placeholder="长期服用的药，如：氨氯地平"
+        placeholder-style="{{highContrast ? 'color:#FFFFFF' : 'color:#5A7068'}}"
         value="{{form.medications}}"
         data-key="medications"
         bindinput="onFieldInput"
         maxlength="300"
         auto-height
+        aria-label="长期用药"
       />
     </view>
 
@@ -79,11 +89,13 @@
       <textarea
         class="field__textarea"
         placeholder="既往病史或手术，如：高血压"
+        placeholder-style="{{highContrast ? 'color:#FFFFFF' : 'color:#5A7068'}}"
         value="{{form.history}}"
         data-key="history"
         bindinput="onFieldInput"
         maxlength="300"
         auto-height
+        aria-label="既往病史和手术情况"
       />
     </view>
   </view>

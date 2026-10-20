@@ -55,7 +55,7 @@
 
 | 编号 | 功能 | 说明 | 代码锚点 |
 | --- | --- | --- | --- |
-| F-01 | 工作台总览 | 按本机时间问候并给出一句话产品定位，附本机日期；展示档案准备总览（完整度 + 进度条）与症状/资料/待问计数；合并展示最近记录与使用提示（功能入口改由全局左侧导航栏承载） | `hospital-ai-miniapp/pages/home/home.ts: refresh / greetingFor / todayLabelFor`；`hospital-ai-miniapp/components/app-sidebar/app-sidebar.ts` |
+| F-01 | 工作台总览 | 按本机时间问候并给出一句话产品定位，附本机日期；展示档案准备总览（完整度 + 进度条）与症状/资料/待问计数；合并展示最近记录与使用提示，首页有有效档案或记录时进入就医摘要，没有时引导新增症状；手机工作台通过底部五入口导航，记录/我的有次级入口 | `hospital-ai-miniapp/pages/home/view/controller.ts: refresh / greetingFor / todayLabelFor`；`hospital-ai-miniapp/pages/workspace/workspace.ts` |
 | F-02 | 个人档案（单例） | 称呼、年龄段、性别（可选）、过敏、长期用药、既往情况 | `hospital-ai-miniapp/shared/services/records.ts: profile` |
 | F-03 | 症状时间线 | 按发生时间记录症状原话、持续时长、影响、标签与 1 个附件 | `hospital-ai-miniapp/pages/symptoms/symptoms.ts: onSave` |
 | F-04 | 资料摘录 | 记录资料名称、摘录、来源日期、备注与 1 个附件 | `hospital-ai-miniapp/pages/notes/notes.ts: onSave` |
@@ -121,9 +121,10 @@
 ```
 
 上图中「pages/」现为**单页工作台模型**：`pages/workspace/workspace` 作为启动页（`app.json`
-第 1 项，共 9 页），在单页内以内存切换承载 8 个功能区，不重建页面、无整页导航动画，各功能区
-独立保留滚动位置，系统导航栏标题随当前功能区更新；8 个原路由页保留为可直接打开的页面
-（深链/兼容），行为与视觉不变。
+第 1 项，共 9 页），底部五个主入口（首页、记录、摘要、AI 助手、我的）映射至 8 个功能区；
+记录分为症状/资料/待问，我的分为档案/设置。功能区内存切换且独立保留滚动位置，
+系统导航栏标题随当前功能区更新；8 个原路由页保留为可直接打开的页面
+（深链/兼容），保留原业务操作和左侧导航兼容入口；共用视图的视觉样式随新版更新。
 
 ### 3.2 技术选型
 
@@ -150,7 +151,7 @@
 | 网络出口 | `shared/services/aiClient.ts` | 脱敏、构造发送载荷、生成预览、唯一 `wx.request` 调用点 |
 | 演示 | `shared/services/demoAi.ts` | 演示模式的本地固定输出 |
 | 无障碍 | `shared/ui/a11y.ts` | 字号缩放与高对比偏好读取与下发 |
-| 单页工作台 | `pages/workspace/workspace.*` | 启动页宿主：内存切换 8 个功能区，统一持有 a11y、侧栏、导航栏标题与分享 |
+| 单页工作台 | `pages/workspace/workspace.*` | 启动页宿主：内存切换 8 个功能区，统一持有 a11y、底部五入口导航、导航栏标题与分享 |
 | HTTP 装配 | `server/index.ts` | 路由、CORS、请求体上限、健康检查 |
 | 编排 | `server/orchestrator.ts` | `ask()`：资料整理 / 问诊建议两种模式编排 + 护栏 + 校验，绝不抛异常（问诊引导走独立路由 `interview()`） |
 | 提示词 | `server/prompts.ts` | 三种模式 system 提示、受控科室、上限常量 |
@@ -292,7 +293,7 @@ npm run screenshots:soft  # 软著登记用确定性截图集（需微信开发�
 ### 6.3 验收标准
 
 1. 上述门禁全部通过；
-2. 启动进入单页工作台（workspace，默认工作台功能区），侧栏 8 个功能区内存切换、无白屏；8 个路由页 reLaunch 均可正常渲染、无报错；
+2. 启动进入单页工作台（workspace，默认工作台功能区），底部五入口与记录/我的次级功能区内存切换、无白屏；8 个路由页 reLaunch 均可正常渲染、无报错；
 3. AI 三种模式可用（资料整理 / 问诊建议 / 问诊引导）；资料整理不含医疗判断；问诊建议每条建议带权威来源，或无来源时显示
    「未找到权威资料，请向医生确认」；
 4. 外部 AI 关闭、代理不可用、输出未过校验三种情形均按设计降级，不编造内容；

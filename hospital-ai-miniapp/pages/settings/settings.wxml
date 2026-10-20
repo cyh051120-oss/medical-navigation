@@ -2,7 +2,7 @@
      重构后本页为薄 wrapper：根壳（.settings + app-shell + is-hc/is-collapsed + inline scale）
      ＋ 全局侧栏 ＋ include 共享主体 view/body.wxml（与 workspace section 共用）。
      字号缩放：根节点内联 --mhp-scale 即时生效；高对比：is-hc 类启用 app.wxss 变量。 -->
-<view class="settings app-shell {{highContrast ? 'is-hc' : ''}} {{sidebarCollapsed ? 'is-collapsed' : ''}}" style="--mhp-scale: {{scale}}; --mhp-layout-scale: {{layoutScale}}">
+<view class="settings app-shell {{highContrast ? 'is-hc' : ''}} {{scale >= 1.5 ? 'is-large-text' : ''}} {{sidebarCollapsed ? 'is-collapsed' : ''}}" style="--mhp-scale: {{scale}}; --mhp-layout-scale: {{layoutScale}}">
   <app-sidebar current="settings" collapsed="{{sidebarCollapsed}}" scale="{{scale}}" bind:toggle="onSidebarToggle" />
 
   <include src="./view/body.wxml"/>

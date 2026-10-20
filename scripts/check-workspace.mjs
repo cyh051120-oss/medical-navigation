@@ -15,7 +15,7 @@
 // hospital-ai-miniapp/pages/workspace/ (section switching is in-memory only).
 //
 // READ-ONLY: this script writes no artifacts and mutates no repo state.
-// Exit 0 iff every group (a-f) passes; non-zero otherwise.
+// Exit 0 iff every group (a-g) passes; non-zero otherwise.
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -55,7 +55,7 @@ function readJson(file) {
 
 // --- Load NAV_ITEMS: the registry the 8 sections derive from (TS module via tsx) ---
 const navUrl = pathToFileURL(resolve(appDir, 'shared/ui/nav.ts')).href;
-const { NAV_ITEMS } = await import(navUrl);
+const { NAV_ITEMS, PRIMARY_TABS, RECORD_SECTIONS, MINE_SECTIONS, primaryTabForSection } = await import(navUrl);
 
 const items = Array.from(NAV_ITEMS);
 const navKeys = items.map((item) => item.key);
@@ -226,8 +226,33 @@ group('f', () => {
   };
 });
 
+// (g) New mobile IA: 5 top-level tabs cover all 8 sections, with stable group mapping.
+group('g', () => {
+  const tabKeys = PRIMARY_TABS.map((tab) => tab.key);
+  const correctOrder = JSON.stringify(tabKeys) === JSON.stringify(['home', 'records', 'brief', 'ai', 'mine']);
+  const records = RECORD_SECTIONS.map((section) => section.key);
+  const mine = MINE_SECTIONS.map((section) => section.key);
+  const correctGroups =
+    JSON.stringify(records) === JSON.stringify(['symptoms', 'notes', 'questions']) &&
+    JSON.stringify(mine) === JSON.stringify(['profile', 'settings']);
+  const everySectionCovered = navKeys.every((key) => tabKeys.includes(primaryTabForSection(key)));
+  const firstSectionsKnown = PRIMARY_TABS.every((tab) => navKeys.includes(tab.section));
+  const wxml = readFileSync(resolve(workspaceDir, 'workspace.wxml'), 'utf8');
+  const handlers = readFileSync(resolve(workspaceDir, 'workspace.ts'), 'utf8');
+  const interfaceReady =
+    wxml.includes('wx:for="{{primaryTabs}}"') &&
+    wxml.includes('bindtap="onTabSelect"') &&
+    wxml.includes('bindtap="onSubtabSelect"') &&
+    handlers.includes('onTabSelect(') && handlers.includes('onSubtabSelect(');
+  return {
+    pass: correctOrder && correctGroups && everySectionCovered && firstSectionsKnown && interfaceReady,
+    message: 'mobile navigation: five primary tabs, two group menus, eight sections kept reachable',
+    detail: `keys=[${tabKeys}] records=[${records}] mine=[${mine}] covered=${everySectionCovered} entry=${firstSectionsKnown} wiring=${interfaceReady}`,
+  };
+});
+
 // --- Summary ---
-const groups = ['a', 'b', 'c', 'd', 'e', 'f'];
+const groups = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
 if (failures.length === 0) {
   console.log(`workspace: ${groups.length}/${groups.length} groups passed`);
   process.exit(0);

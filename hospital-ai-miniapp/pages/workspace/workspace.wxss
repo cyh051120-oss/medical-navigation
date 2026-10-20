@@ -1,17 +1,52 @@
-/* pages/workspace/workspace.wxss — 单页工作台宿主壳（P1）。
-   固定高舞台 + 绝对定位 pane；页面高度由 app.wxss 的 page { height: 100% } 提供。
-   宽度让位（.app-shell 的 margin-left）与缩放变量沿用既有契约，不新增视觉值。 */
-
+/* Health Journal · 手机端单页工作台：把工作面留给内容，主导航稳定悬靠底部。 */
 .ws {
+  display: flex;
+  flex-direction: column;
   height: 100%;
   box-sizing: border-box;
+  background: var(--bg-main);
 }
-
 .ws__stage {
-  height: 100%;
-  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
 }
-
+.ws__subnav {
+  display: flex;
+  flex: none;
+  gap: var(--mhp-space-2);
+  margin: var(--mhp-space-4) var(--mhp-space-7) var(--mhp-space-2);
+  padding: var(--mhp-space-2);
+  background: var(--bg-accent);
+  border-radius: var(--radius-lg);
+}
+.ws__subtab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 88rpx;
+  min-width: 0;
+  padding: var(--mhp-space-3) var(--mhp-space-2);
+  border-radius: var(--radius-md);
+  font-size: calc(26rpx * var(--mhp-scale));
+  line-height: var(--mhp-lh-body);
+  color: var(--text-body);
+  text-align: center;
+}
+.ws__subtab.is-active {
+  background: var(--bg-card);
+  color: var(--color-primary);
+  font-weight: var(--mhp-fw-semibold);
+  box-shadow: var(--shadow-sm);
+}
+.ws__content {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
 .ws__pane {
   position: absolute;
   left: 0;
@@ -19,3 +54,45 @@
   top: 0;
   bottom: 0;
 }
+.ws__bottom-nav {
+  display: flex;
+  flex: none;
+  gap: var(--mhp-space-1);
+  margin: 0 var(--mhp-space-4) var(--mhp-space-2);
+  padding: var(--mhp-space-2) var(--mhp-space-2);
+  padding-bottom: calc(var(--mhp-space-2) + env(safe-area-inset-bottom));
+  background: var(--bg-card);
+  border: 2rpx solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+}
+.ws__tab {
+  flex: 1;
+  min-width: 0;
+  min-height: 96rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--mhp-space-1);
+  box-sizing: border-box;
+  padding: var(--mhp-space-2);
+  border-radius: var(--radius-md);
+  color: var(--text-caption);
+}
+.ws__tab.is-active {
+  color: var(--color-primary);
+  background: var(--bg-accent);
+}
+.ws__tab-icon {
+  width: calc(38rpx * var(--mhp-layout-scale));
+  height: calc(38rpx * var(--mhp-layout-scale));
+}
+.ws__tab-label {
+  font-size: calc(24rpx * var(--mhp-scale));
+  font-weight: var(--mhp-fw-semibold);
+  line-height: var(--mhp-lh-caption);
+  text-align: center;
+  white-space: normal;
+}
+.ws.is-large-text .ws__tab { min-height: 108rpx; }
